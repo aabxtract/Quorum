@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground: #f9fafb;
+  --background: #0f0f11;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: #0f0f11; }
+::-webkit-scrollbar-thumb { background: #2a2a2e; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+/* Smooth scroll for anchor links */
+html { scroll-behavior: smooth; }
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-surface-panel/80 backdrop-blur-md border border-white/5;
+  }
+
+  .glow-cyan {
+    box-shadow: 0 0 30px -5px rgba(12, 242, 196, 0.3);
+  }
+
+  .glow-cyan-strong {
+    box-shadow: 0 0 50px 0px rgba(12, 242, 196, 0.4);
+  }
+
+  .text-gradient-cyan {
+    @apply text-transparent bg-clip-text;
+    background-image: linear-gradient(135deg, #0cf2c4, #60a5fa);
+  }
+
+  /* card border glow on hover */
+  .card-hover {
+    @apply transition-all duration-300;
+  }
+  .card-hover:hover {
+    box-shadow: 0 0 0 1px rgba(12, 242, 196, 0.2), 0 8px 40px -10px rgba(12, 242, 196, 0.15);
+  }
+
+  /* dot grid pattern */
+  .dot-grid {
+    background-image: radial-gradient(circle, rgba(12,242,196,0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  /* custom scrollbar for inner containers */
+  .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: #2a2a2e; border-radius: 2px; }
+}
+
+/* FAQ animation */
+@layer components {
+  .faq-answer {
+    animation: fadeDown 0.2s ease-out forwards;
+  }
+}
+
+@keyframes fadeDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
