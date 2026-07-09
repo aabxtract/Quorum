@@ -41,6 +41,25 @@ export default function Home() {
   return (
     <div className="relative min-h-screen bg-[#0A0A0B] overflow-hidden selection:bg-quorum-500/30 selection:text-white">
 
+      {/* ── Aurora pillars ── tall soft rectangles falling from the top edge */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+
+        {/* Left cluster — teal */}
+        <div style={{ position:'absolute', top:0, left:'8%',  width:55, height:600, borderRadius:6, filter:'blur(28px)', background:'linear-gradient(to bottom, rgba(12,242,196,0.9) 0%, rgba(12,242,196,0.4) 50%, transparent 100%)' }} />
+        <div style={{ position:'absolute', top:0, left:'12%', width:70, height:680, borderRadius:6, filter:'blur(32px)', background:'linear-gradient(to bottom, rgba(12,242,196,1)   0%, rgba(12,242,196,0.5) 45%, transparent 100%)' }} />
+        <div style={{ position:'absolute', top:0, left:'17%', width:50, height:540, borderRadius:6, filter:'blur(24px)', background:'linear-gradient(to bottom, rgba(12,242,196,0.7) 0%, rgba(12,242,196,0.3) 50%, transparent 100%)' }} />
+        <div style={{ position:'absolute', top:0, left:'21%', width:40, height:440, borderRadius:6, filter:'blur(20px)', background:'linear-gradient(to bottom, rgba(12,242,196,0.5) 0%, rgba(12,242,196,0.15)50%, transparent 100%)' }} />
+
+        {/* Right cluster — orange */}
+        <div style={{ position:'absolute', top:0, right:'8%',  width:55, height:600, borderRadius:6, filter:'blur(28px)', background:'linear-gradient(to bottom, rgba(249,115,22,0.9) 0%, rgba(249,115,22,0.4) 50%, transparent 100%)' }} />
+        <div style={{ position:'absolute', top:0, right:'12%', width:70, height:680, borderRadius:6, filter:'blur(32px)', background:'linear-gradient(to bottom, rgba(249,115,22,1)   0%, rgba(249,115,22,0.5) 45%, transparent 100%)' }} />
+        <div style={{ position:'absolute', top:0, right:'17%', width:50, height:540, borderRadius:6, filter:'blur(24px)', background:'linear-gradient(to bottom, rgba(249,115,22,0.7) 0%, rgba(249,115,22,0.3) 50%, transparent 100%)' }} />
+        <div style={{ position:'absolute', top:0, right:'21%', width:40, height:440, borderRadius:6, filter:'blur(20px)', background:'linear-gradient(to bottom, rgba(249,115,22,0.5) 0%, rgba(249,115,22,0.15)50%, transparent 100%)' }} />
+
+        {/* Floor fade */}
+        <div className="absolute inset-x-0 bottom-0 h-[55%] bg-gradient-to-t from-[#0A0A0B] via-[#0A0A0B]/80 to-transparent" />
+      </div>
+
       <div className="max-w-7xl mx-auto px-6 lg:px-8 pt-24 pb-24 relative z-10">
 
         {/* ─── HERO SECTION ────────────────────────────── */}
