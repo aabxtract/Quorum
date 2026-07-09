@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import WalletConnect from '@/components/WalletConnect'
 
 const navLinks = [
   { label: 'Markets', href: '/markets' },
@@ -88,6 +89,11 @@ export default function Nav() {
 
           {/* Right Actions */}
           <div className="flex items-center justify-end gap-3 w-48">
+            {/* Hiro wallet */}
+            <div className="hidden sm:block">
+              <WalletConnect />
+            </div>
+
             {/* Auth section */}
             {authLoaded && (
               <div className="hidden sm:block">

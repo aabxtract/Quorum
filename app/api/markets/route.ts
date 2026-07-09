@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPool } from '@/lib/db'
 import { sendTelegramMessage } from '@/lib/telegram'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
     const { rows } = await getPool().query(`

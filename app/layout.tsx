@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Poppins, Open_Sans } from 'next/font/google';
 import './globals.css';
 import Nav from './nav';
+import { WalletProvider } from '@/lib/wallet-context';
 
 const poppins = Poppins({
   subsets: ['latin'],
@@ -37,10 +38,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="icon" href="/favicon.png" type="image/png" />
       </head>
       <body className={`min-h-screen bg-[#0f0f11] text-gray-100 antialiased ${poppins.variable} ${openSans.variable} font-sans flex flex-col`}>
-        <Nav />
-        <main className="flex-grow">
-          {children}
-        </main>
+        <WalletProvider>
+          <Nav />
+          <main className="flex-grow">
+            {children}
+          </main>
+        </WalletProvider>
       </body>
     </html>
   );

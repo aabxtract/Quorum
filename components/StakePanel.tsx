@@ -1,13 +1,17 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useWallet } from '@/lib/wallet-context'
 import { createBrowserVault } from '@/lib/flowvault-browser'
-import { toMicro } from '@/lib/flowvault-agent'
+
+// Inline — avoids pulling in the server-only flowvault-agent module
+const toMicro = (amount: number): string =>
+  BigInt(Math.floor(amount * 1_000_000)).toString()
 
 export default function StakePanel({ marketId, onStaked }: {
   marketId: string
   onStaked: () => void
 }) {
-  const [walletAddress, setWalletAddress] = useState<string | null>(null)
+  const { walletAddress, connectWallet } = useWallet()
   const [side, setSide] = useState<'yes' | 'no'>('yes')
   const [amount, setAmount] = useState('')
   const [loading, setLoading] = useState(false)
@@ -15,24 +19,12 @@ export default function StakePanel({ marketId, onStaked }: {
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    import('@stacks/connect').then(({ AppConfig, UserSession }) => {
-      try {
-        const appConfig = new AppConfig(['store_write', 'publish_data'])
-        const userSession = new UserSession({ appConfig })
-        if (userSession.isUserSignedIn()) {
-          const profile = userSession.loadUserData()
-          const addr = profile.profile.stxAddress.testnet || profile.profile.stxAddress.mainnet
-          setWalletAddress(addr)
-        }
-      } catch {
-        /* session not ready */
-      }
-    })
-  }, [])
-
   async function handleStake() {
-    if (!walletAddress) return setError('Connect wallet first')
+    if (!walletAddress) {
+      // Trigger wallet connect inline then let user re-click
+      await connectWallet()
+      return
+    }
     const amt = parseFloat(amount)
     if (!amt || amt <= 0) return setError('Enter a valid amount')
 
@@ -41,7 +33,7 @@ export default function StakePanel({ marketId, onStaked }: {
     setTxHash(null)
 
     try {
-      // 1. Escrow USDCx on-chain via FlowVault (user signs in Hiro wallet)
+      // 1. Escrow USDCx on-chain via FlowVault — opens Hiro wallet popup
       setStatus('Requesting wallet signature…')
       const vault = createBrowserVault(walletAddress)
       const result = await vault.deposit(toMicro(amt))
@@ -66,11 +58,10 @@ export default function StakePanel({ marketId, onStaked }: {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to record stake')
 
-      setStatus('Stake confirmed')
+      setStatus('Stake confirmed!')
       setAmount('')
       onStaked()
     } catch (e: any) {
-      // Distinguish user-cancelled wallet prompt from real errors
       const msg = e?.message || String(e)
       if (/user (rejected|denied|cancel)/i.test(msg)) {
         setError('Signature cancelled')
@@ -82,11 +73,18 @@ export default function StakePanel({ marketId, onStaked }: {
     }
   }
 
+  // Wallet not connected — show connect prompt instead of hiding the panel
   if (!walletAddress) {
     return (
-      <div className="bg-[#121214] border border-white/5 rounded-2xl p-6 text-center">
-        <p className="text-gray-400 text-sm mb-2">Connect your Hiro wallet to stake</p>
-        <p className="text-gray-600 text-xs">Use the Connect Wallet button in the nav</p>
+      <div className="bg-[#121214] border border-white/5 rounded-2xl p-6 text-center space-y-4">
+        <p className="text-gray-300 font-medium">Connect your Hiro wallet to stake</p>
+        <button
+          onClick={connectWallet}
+          className="w-full bg-quorum-500 hover:bg-quorum-400 text-[#0A0A0B] font-bold py-3 rounded-xl text-sm transition-colors"
+        >
+          Connect Wallet
+        </button>
+        <p className="text-gray-600 text-xs">Hiro Wallet required · USDCx on Stacks testnet</p>
       </div>
     )
   }
@@ -122,9 +120,11 @@ export default function StakePanel({ marketId, onStaked }: {
 
       <input
         type="number"
+        min="0"
+        step="any"
         placeholder="Amount (USDCx)"
         value={amount}
-        onChange={e => setAmount(e.target.value)}
+        onChange={e => { setAmount(e.target.value); setError('') }}
         disabled={loading}
         className="w-full bg-[#0A0A0B] border border-white/10 rounded-xl px-4 py-3 text-white text-sm mb-4 focus:outline-none focus:border-quorum-500/50 disabled:opacity-50"
       />
@@ -133,7 +133,7 @@ export default function StakePanel({ marketId, onStaked }: {
       {loading && status && (
         <p className="text-quorum-500 text-xs mb-3 animate-pulse">{status}</p>
       )}
-      {txHash && !error && (
+      {txHash && !loading && (
         <p className="text-xs text-gray-400 mb-3">
           Deposit tx:{' '}
           <a

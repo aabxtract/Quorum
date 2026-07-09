@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrice } from '@/lib/price'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
     const symbol = req.nextUrl.searchParams.get('symbol') || 'STXUSDT'

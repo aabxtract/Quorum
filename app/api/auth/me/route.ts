@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPool } from '@/lib/db'
 import { verifyJwt } from '@/lib/auth'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
     // Try cookie first, then Authorization header

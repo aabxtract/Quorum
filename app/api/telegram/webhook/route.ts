@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPool } from '@/lib/db'
 import { sendTelegramMessage } from '@/lib/telegram'
 
+export const dynamic = 'force-dynamic'
+
 // Register once after deploy:
 // https://api.telegram.org/bot{TOKEN}/setWebhook?url=https://<host>/api/telegram/webhook
 

@@ -5,6 +5,33 @@ import { useState } from 'react'
 
 const fetcher = (url: string) => fetch(url).then(res => res.json())
 
+function PriceTicker({ symbol, label }: { symbol: string; label: string }) {
+  const { data, error } = useSWR(
+    `/api/price?symbol=${symbol}`,
+    fetcher,
+    { refreshInterval: 15000 }
+  )
+  const price: number | undefined = data?.price
+  const displayPrice =
+    price === undefined
+      ? '—'
+      : price >= 100
+        ? price.toLocaleString('en-US', { maximumFractionDigits: 2 })
+        : price.toFixed(4)
+
+  return (
+    <div className="flex-1 md:flex-none min-w-[140px] bg-[#13131A] border border-[#1E1E2E] rounded-xl px-4 py-3 flex items-center gap-3">
+      <span className="text-gray-500 text-xs uppercase tracking-widest font-mono">{label}</span>
+      <span className={`ml-auto font-mono font-bold text-sm ${error ? 'text-red-400' : data ? 'text-white' : 'text-gray-500 animate-pulse'}`}>
+        {error ? 'err' : `$${displayPrice}`}
+      </span>
+      {data && (
+        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" title="Live" />
+      )}
+    </div>
+  )
+}
+
 export default function MarketsPage() {
   const { data, error } = useSWR('/api/markets', fetcher, { refreshInterval: 10000 })
   const [filter, setFilter] = useState<'all' | 'open' | 'resolved'>('open')
@@ -18,12 +45,12 @@ export default function MarketsPage() {
 
   return (
     <div className="pt-24 pb-20 px-6 max-w-7xl mx-auto min-h-screen">
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-6">
         <div>
           <h1 className="text-4xl font-black font-heading mb-2">Markets</h1>
           <p className="text-gray-400">Stake on outcomes, settled by AI.</p>
         </div>
-        
+
         <div className="flex bg-[#13131A] border border-[#1E1E2E] rounded-xl p-1 w-fit">
           <button 
             onClick={() => setFilter('open')}
@@ -50,6 +77,13 @@ export default function MarketsPage() {
             All
           </button>
         </div>
+      </div>
+
+      {/* Live price ticker */}
+      <div className="flex flex-wrap gap-3 mb-10">
+        <PriceTicker symbol="STXUSDT" label="STX" />
+        <PriceTicker symbol="BTCUSDT" label="BTC" />
+        <PriceTicker symbol="ETHUSDT" label="ETH" />
       </div>
 
       {error ? (
