@@ -4,15 +4,16 @@ import Link from 'next/link'
 import { createBrowserVault } from '@/lib/flowvault-browser'
 import { fromMicro } from '@/lib/flowvault-agent'
 
-interface VaultState {
-  unlocked: string
-  locked: string
-  lockUntilBlock?: string | number
+interface UiVaultState {
+  unlockedMicro: string
+  lockedMicro: string
+  lockUntilBlock: number
+  currentBlock: number
 }
 
 export default function WithdrawPage() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
-  const [state, setState] = useState<VaultState | null>(null)
+  const [state, setState] = useState<UiVaultState | null>(null)
   const [currentBlock, setCurrentBlock] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -39,12 +40,14 @@ export default function WithdrawPage() {
     setError('')
     try {
       const vault = createBrowserVault(addr)
-      const [s, block] = await Promise.all([
-        vault.getVaultState(addr),
-        vault.getCurrentBlockHeight(addr).catch(() => null),
-      ])
-      setState(s as VaultState)
-      if (block !== null) setCurrentBlock(Number(block))
+      const s = await vault.getVaultState(addr)
+      setState({
+        unlockedMicro: String(s.unlockedBalance ?? 0),
+        lockedMicro: String(s.lockedBalance ?? 0),
+        lockUntilBlock: Number(s.lockUntilBlock ?? 0),
+        currentBlock: Number(s.currentBlock ?? 0),
+      })
+      setCurrentBlock(Number(s.currentBlock ?? 0))
     } catch (e: any) {
       setError(e?.message || 'Failed to read vault state')
     } finally {
@@ -58,8 +61,8 @@ export default function WithdrawPage() {
 
   async function handleWithdraw() {
     if (!walletAddress || !state) return
-    const unlockedMicro = BigInt(state.unlocked || '0')
-    if (unlockedMicro <= 0n) return setError('Nothing to withdraw')
+    const unlockedMicro = BigInt(state.unlockedMicro || '0')
+    if (unlockedMicro <= BigInt(0)) return setError('Nothing to withdraw')
 
     setLoading(true)
     setError('')
@@ -94,9 +97,9 @@ export default function WithdrawPage() {
     )
   }
 
-  const unlocked = state ? fromMicro(state.unlocked || '0') : 0
-  const locked = state ? fromMicro(state.locked || '0') : 0
-  const lockUntil = state?.lockUntilBlock ? Number(state.lockUntilBlock) : null
+  const unlocked = state ? fromMicro(state.unlockedMicro) : 0
+  const locked = state ? fromMicro(state.lockedMicro) : 0
+  const lockUntil = state?.lockUntilBlock || null
   const blocksRemaining = lockUntil && currentBlock ? Math.max(0, lockUntil - currentBlock) : null
 
   return (

@@ -1,25 +1,40 @@
-import { FlowVault } from 'flowvault-sdk';
+import { FlowVault } from 'flowvault-sdk'
+import {
+  FLOWVAULT_CONTRACT_ADDRESS,
+  FLOWVAULT_CONTRACT_NAME,
+  FLOWVAULT_NETWORK,
+  USDCX_CONTRACT_ADDRESS,
+  USDCX_CONTRACT_NAME,
+} from './flowvault-config'
+
+// @stacks/connect v7 uses callback-based openContractCall; FlowVault expects a
+// Promise-returning executor, so we wrap it.
 
 export function createBrowserVault(senderAddress: string) {
-  const networkStr = process.env.NEXT_PUBLIC_FLOWVAULT_NETWORK || 'testnet';
-  
   return new FlowVault({
-    network: networkStr as any,
-    contractAddress: process.env.NEXT_PUBLIC_FLOWVAULT_CONTRACT_ADDRESS || 'STD7QG84VQQ0C35SZM2EYTHZV4M8FQ0R7YNSQWPD',
-    contractName: process.env.NEXT_PUBLIC_FLOWVAULT_CONTRACT_NAME || 'flowvault-v2',
-    tokenContractAddress: process.env.NEXT_PUBLIC_FLOWVAULT_TOKEN_CONTRACT_ADDRESS || 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM',
-    tokenContractName: process.env.NEXT_PUBLIC_FLOWVAULT_TOKEN_CONTRACT_NAME || 'usdcx',
+    network: FLOWVAULT_NETWORK as any,
+    contractAddress: FLOWVAULT_CONTRACT_ADDRESS,
+    contractName: FLOWVAULT_CONTRACT_NAME,
+    tokenContractAddress: USDCX_CONTRACT_ADDRESS,
+    tokenContractName: USDCX_CONTRACT_NAME,
     senderAddress,
-    contractCallExecutor: async (call) => {
-      const { request } = await import('@stacks/connect');
-      return request('stx_callContract', {
-        contract: call.contractAddress + '.' + call.contractName,
-        functionName: call.functionName,
-        functionArgs: call.functionArgs as any,
-        network: call.network as any,
-        postConditionMode: 'allow',
-        postConditions: call.postConditions as any,
-      });
+    contractCallExecutor: async (call: any) => {
+      const { openContractCall } = await import('@stacks/connect')
+      return new Promise((resolve, reject) => {
+        openContractCall({
+          contractAddress: call.contractAddress,
+          contractName: call.contractName,
+          functionName: call.functionName,
+          functionArgs: call.functionArgs,
+          network: call.network,
+          postConditionMode: 'allow' as any,
+          postConditions: call.postConditions,
+          onFinish: (data: any) => {
+            resolve({ txId: data.txId, status: 'success' } as any)
+          },
+          onCancel: () => reject(new Error('User cancelled')),
+        } as any)
+      })
     },
-  });
+  })
 }

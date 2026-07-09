@@ -34,6 +34,8 @@ export default function AccountPage() {
   const [stakes, setStakes] = useState<Stake[]>([])
   const [loading, setLoading] = useState(true)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [linkingWallet, setLinkingWallet] = useState(false)
+  const [linkError, setLinkError] = useState('')
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -54,6 +56,56 @@ export default function AccountPage() {
     setLoggingOut(true)
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/')
+  }
+
+  const linkWallet = async () => {
+    setLinkError('')
+    setLinkingWallet(true)
+    try {
+      const { AppConfig, UserSession, showConnect } = await import('@stacks/connect')
+      const appConfig = new AppConfig(['store_write', 'publish_data'])
+      const userSession = new UserSession({ appConfig })
+
+      const getAddr = () => {
+        const profile = userSession.loadUserData()
+        return profile.profile.stxAddress.testnet || profile.profile.stxAddress.mainnet
+      }
+
+      const submit = async (addr: string) => {
+        const res = await fetch('/api/auth/link-wallet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ walletAddress: addr }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Failed to link wallet')
+        setUser(data.user)
+      }
+
+      if (userSession.isUserSignedIn()) {
+        await submit(getAddr())
+        return
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        showConnect({
+          appDetails: { name: 'Quorum', icon: '/favicon.ico' },
+          userSession,
+          onFinish: async () => {
+            try {
+              await submit(getAddr())
+              resolve()
+            } catch (e) { reject(e) }
+          },
+          onCancel: () => reject(new Error('Cancelled')),
+        })
+      })
+    } catch (e: any) {
+      const msg = e?.message || String(e)
+      setLinkError(msg === 'Cancelled' ? 'Wallet connection cancelled' : msg)
+    } finally {
+      setLinkingWallet(false)
+    }
   }
 
   if (loading) {
@@ -132,12 +184,31 @@ export default function AccountPage() {
         {/* Profile Info */}
         <div className="grid md:grid-cols-2 gap-4 mb-10">
           <InfoCard label="Email" value={user.email} icon="✉️" />
-          <InfoCard
-            label="Wallet"
-            value={user.wallet_address ? truncateAddr(user.wallet_address) : 'Not linked'}
-            icon="🔗"
-            mono
-          />
+          <div className="bg-[#13131A] border border-[#1E1E2E] rounded-xl px-5 py-4 flex items-center gap-4">
+            <span className="text-xl flex-shrink-0">🔗</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-gray-500 text-xs uppercase tracking-widest mb-0.5">Wallet</p>
+              {user.wallet_address ? (
+                <p className="text-white text-sm font-medium truncate font-mono">
+                  {truncateAddr(user.wallet_address)}
+                </p>
+              ) : (
+                <div>
+                  <p className="text-gray-500 text-sm mb-2">Not linked — required to stake</p>
+                  <button
+                    onClick={linkWallet}
+                    disabled={linkingWallet}
+                    className="px-3 py-1.5 bg-quorum-500/10 hover:bg-quorum-500/20 border border-quorum-500/30 text-quorum-500 text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {linkingWallet ? 'Connecting…' : 'Link Wallet'}
+                  </button>
+                  {linkError && (
+                    <p className="text-red-400 text-xs mt-2">{linkError}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
           <InfoCard
             label="Member Since"
             value={new Date(user.created_at).toLocaleDateString('en-US', {

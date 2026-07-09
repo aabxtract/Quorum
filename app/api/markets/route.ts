@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import { sendTelegramMessage } from '@/lib/telegram'
 
 export async function GET(req: NextRequest) {
   try {
@@ -39,7 +40,16 @@ export async function POST(req: NextRequest) {
       RETURNING *
     `, [question, symbol, targetValue, direction, marketType || 'flash', resolvesAt, createdBy])
 
-    return NextResponse.json({ market: rows[0] })
+    const created = rows[0]
+    // Fire-and-forget Telegram announcement
+    sendTelegramMessage(
+      `🆕 *NEW MARKET*\n\n` +
+        `"${created.question}"\n\n` +
+        `${created.symbol} ${created.direction} $${created.target_value}\n` +
+        `Resolves: ${new Date(created.resolves_at).toISOString().replace('T', ' ').slice(0, 16)} UTC`
+    ).catch(() => {})
+
+    return NextResponse.json({ market: created })
   } catch (error) {
     console.error('Error creating market:', error)
     return NextResponse.json({ error: 'Failed to create market' }, { status: 500 })

@@ -2,20 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getPrice } from '@/lib/price'
 import { getAgentReasoning } from '@/lib/groq'
-import { executeAtomicSettlement } from '@/lib/flowvault-agent'
+import {
+  executeAtomicSettlement,
+  payoutWinner,
+  agentVault,
+} from '@/lib/flowvault-agent'
 import { sendTelegramMessage } from '@/lib/telegram'
 
 export async function POST(req: NextRequest) {
-  // Verify cron secret
   const auth = req.headers.get('authorization')
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Find all open markets past their resolution time
   const { rows: markets } = await pool.query(`
-    SELECT * FROM markets 
-    WHERE status = 'open' 
+    SELECT * FROM markets
+    WHERE status = 'open'
     AND resolves_at <= NOW()
     ORDER BY resolves_at ASC
     LIMIT 5
@@ -29,19 +31,17 @@ export async function POST(req: NextRequest) {
 
   for (const market of markets) {
     try {
-      // Mark as resolving to prevent double-execution
       await pool.query(
         `UPDATE markets SET status = 'resolving' WHERE id = $1`,
         [market.id]
       )
 
-      // Fetch current price
       const currentPrice = await getPrice(market.symbol)
 
-      // Determine winner
-      const condition = market.direction === 'above'
-        ? currentPrice > parseFloat(market.target_value)
-        : currentPrice < parseFloat(market.target_value)
+      const condition =
+        market.direction === 'above'
+          ? currentPrice > parseFloat(market.target_value)
+          : currentPrice < parseFloat(market.target_value)
       const winningSide = condition ? 'yes' : 'no'
       const losingSide = winningSide === 'yes' ? 'no' : 'yes'
 
@@ -49,83 +49,134 @@ export async function POST(req: NextRequest) {
       const winnerPool = parseFloat(market[`${winningSide}_pool`])
       const loserPool = parseFloat(market[`${losingSide}_pool`])
 
-      // Get AI reasoning
       const reasoning = await getAgentReasoning({
         question: market.question,
         currentPrice,
         targetValue: parseFloat(market.target_value),
         direction: market.direction,
-        winningSide
+        winningSide,
       })
 
-      // Log to agent_log
-      await pool.query(`
-        INSERT INTO agent_log (market_id, action, price_at_resolution, reasoning)
-        VALUES ($1, $2, $3, $4)
-      `, [market.id, `RESOLVED_${winningSide.toUpperCase()}`, currentPrice, reasoning])
+      await pool.query(
+        `INSERT INTO agent_log (market_id, action, price_at_resolution, reasoning)
+         VALUES ($1, $2, $3, $4)`,
+        [market.id, `RESOLVED_${winningSide.toUpperCase()}`, currentPrice, reasoning]
+      )
 
-      let settleTxHash = null
+      let settleTxHash: string | null = null
+      const payoutTxs: { stakeId: string; txId: string; amount: number }[] = []
 
-      // Only execute settlement if there are funds in the pool
+      // Only touch FlowVault if there was actual money in the market
       if (totalPool > 0) {
         settleTxHash = await executeAtomicSettlement({
           totalPool,
           winnerPool,
           loserPool,
-          winnerAddress: process.env.TREASURY_WALLET || ''
+          winnerAddress: process.env.TREASURY_WALLET || '',
         })
-      }
 
-      // Update market as resolved
-      await pool.query(`
-        UPDATE markets SET
-          status = 'resolved',
-          winning_side = $1,
-          resolution_price = $2,
-          agent_reasoning = $3,
-          settlement_tx_hash = $4
-        WHERE id = $5
-      `, [winningSide, currentPrice, reasoning, settleTxHash, market.id])
-
-      // Calculate winner payout per staker
-      if (loserPool > 0 && winnerPool > 0) {
-        const { rows: winnerStakes } = await pool.query(
-          `SELECT * FROM stakes WHERE market_id = $1 AND side = $2`,
-          [market.id, winningSide]
-        )
-
-        for (const stake of winnerStakes) {
-          const stakeAmount = parseFloat(stake.amount)
-          const profit = (stakeAmount / winnerPool) * (loserPool * 0.95)
-          const payout = stakeAmount + profit
-
-          await pool.query(
-            `UPDATE stakes SET payout_amount = $1, payout_tx_hash = $2 WHERE id = $3`,
-            [payout, settleTxHash, stake.id]
+        // Distribute winner payouts one-by-one via routing rules.
+        if (winnerPool > 0 && loserPool > 0) {
+          const { rows: winnerStakes } = await pool.query(
+            `SELECT id, wallet_address, amount FROM stakes
+              WHERE market_id = $1 AND side = $2`,
+            [market.id, winningSide]
           )
+
+          for (const stake of winnerStakes) {
+            const stakeAmount = parseFloat(stake.amount)
+            const profit = (stakeAmount / winnerPool) * (loserPool * 0.95)
+            const payout = stakeAmount + profit
+
+            try {
+              const txId = await payoutWinner(stake.wallet_address, payout)
+              payoutTxs.push({ stakeId: stake.id, txId, amount: payout })
+              await pool.query(
+                `UPDATE stakes SET payout_amount = $1, payout_tx_hash = $2 WHERE id = $3`,
+                [payout, txId, stake.id]
+              )
+            } catch (payoutErr) {
+              console.error(
+                `Payout failed for stake ${stake.id} (${stake.wallet_address}):`,
+                payoutErr
+              )
+              // Record the calculated amount even if the tx failed, so it can
+              // be retried / claimed later.
+              await pool.query(
+                `UPDATE stakes SET payout_amount = $1 WHERE id = $2`,
+                [payout, stake.id]
+              )
+            }
+          }
+
+          // Clear rules once at the end to reset agent vault state
+          try {
+            await agentVault.clearRoutingRules()
+          } catch (e) {
+            console.error('Failed to clear routing rules after payouts:', e)
+          }
+        } else if (winnerPool > 0 && loserPool === 0) {
+          // Everyone was on the winning side — just refund principal.
+          const { rows: winnerStakes } = await pool.query(
+            `SELECT id, wallet_address, amount FROM stakes
+              WHERE market_id = $1 AND side = $2`,
+            [market.id, winningSide]
+          )
+          for (const stake of winnerStakes) {
+            const amt = parseFloat(stake.amount)
+            try {
+              const txId = await payoutWinner(stake.wallet_address, amt)
+              payoutTxs.push({ stakeId: stake.id, txId, amount: amt })
+              await pool.query(
+                `UPDATE stakes SET payout_amount = $1, payout_tx_hash = $2 WHERE id = $3`,
+                [amt, txId, stake.id]
+              )
+            } catch (e) {
+              console.error(`Refund failed for stake ${stake.id}:`, e)
+              await pool.query(
+                `UPDATE stakes SET payout_amount = $1 WHERE id = $2`,
+                [amt, stake.id]
+              )
+            }
+          }
+          try { await agentVault.clearRoutingRules() } catch {}
         }
       }
 
-      // Send Telegram notification
+      await pool.query(
+        `UPDATE markets SET
+           status = 'resolved',
+           winning_side = $1,
+           resolution_price = $2,
+           agent_reasoning = $3,
+           settlement_tx_hash = $4
+         WHERE id = $5`,
+        [winningSide, currentPrice, reasoning, settleTxHash, market.id]
+      )
+
       const explorerLink = settleTxHash
         ? `https://explorer.hiro.so/txid/${settleTxHash}?chain=testnet`
         : 'No funds staked'
 
       await sendTelegramMessage(
         `🏆 *MARKET RESOLVED*\n\n` +
-        `"${market.question}"\n\n` +
-        `*${winningSide.toUpperCase()} WINS*\n` +
-        `Price at resolution: $${currentPrice}\n` +
-        `Total pool: ${totalPool} USDCx\n\n` +
-        `🤖 Agent: ${reasoning}\n\n` +
-        `Settlement: [View Tx](${explorerLink})`
+          `"${market.question}"\n\n` +
+          `*${winningSide.toUpperCase()} WINS*\n` +
+          `Price at resolution: $${currentPrice}\n` +
+          `Total pool: ${totalPool} USDCx\n` +
+          `Winners paid: ${payoutTxs.length}\n\n` +
+          `🤖 Agent: ${reasoning}\n\n` +
+          `Settlement: [View Tx](${explorerLink})`
       )
 
-      results.push({ marketId: market.id, winningSide, settleTxHash })
-
+      results.push({
+        marketId: market.id,
+        winningSide,
+        settleTxHash,
+        payouts: payoutTxs.length,
+      })
     } catch (error) {
       console.error(`Failed to resolve market ${market.id}:`, error)
-      // Reset to open so it retries next cron
       await pool.query(
         `UPDATE markets SET status = 'open' WHERE id = $1`,
         [market.id]
