@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import pool from '@/lib/db'
+import { getPool } from '@/lib/db'
 import { hashPassword, signJwt } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const client = await pool.connect()
+    const client = await getPool().connect()
     try {
       // Check for existing email
       const existing = await client.query(

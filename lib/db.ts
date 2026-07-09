@@ -22,13 +22,3 @@ export function getPool(): Pool {
   }
   return globalForPg.__pgPool
 }
-
-const _pool = new Proxy({} as Pool, {
-  get(_, prop) {
-    const instance = getPool()
-    const val = (instance as any)[prop]
-    return typeof val === 'function' ? val.bind(instance) : val
-  },
-})
-
-export default _pool

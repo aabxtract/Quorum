@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import pool from '@/lib/db'
+import { getPool } from '@/lib/db'
 import { sendTelegramMessage } from '@/lib/telegram'
 
 // Register once after deploy:
@@ -29,9 +29,9 @@ export async function POST(req: NextRequest) {
       )
     } else if (cmd === '/status') {
       const [{ rows: openM }, { rows: resolvedM }, { rows: stakeAgg }] = await Promise.all([
-        pool.query(`SELECT COUNT(*)::int AS c FROM markets WHERE status='open'`),
-        pool.query(`SELECT COUNT(*)::int AS c FROM markets WHERE status='resolved'`),
-        pool.query(
+        getPool().query(`SELECT COUNT(*)::int AS c FROM markets WHERE status='open'`),
+        getPool().query(`SELECT COUNT(*)::int AS c FROM markets WHERE status='resolved'`),
+        getPool().query(
           `SELECT COALESCE(SUM(amount),0)::float AS total,
                   COUNT(*)::int AS c
              FROM stakes`
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
         chatId
       )
     } else if (cmd === '/log') {
-      const { rows } = await pool.query(
+      const { rows } = await getPool().query(
         `SELECT question, winning_side, resolution_price, agent_reasoning
            FROM markets
           WHERE status='resolved'
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
         await sendTelegramMessage(`🤖 *Recent Resolutions*\n\n${body}`, chatId)
       }
     } else if (cmd === '/markets') {
-      const { rows } = await pool.query(
+      const { rows } = await getPool().query(
         `SELECT question, symbol, target_value, direction, resolves_at
            FROM markets
           WHERE status='open' AND resolves_at > NOW()

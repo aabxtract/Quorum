@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import pool from '@/lib/db'
+import { getPool } from '@/lib/db'
 
 export async function GET(
   req: NextRequest,
@@ -7,7 +7,7 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    const { rows: marketRows } = await pool.query(
+    const { rows: marketRows } = await getPool().query(
       `SELECT * FROM markets WHERE id = $1`,
       [id]
     )
@@ -16,7 +16,7 @@ export async function GET(
       return NextResponse.json({ error: 'Market not found' }, { status: 404 })
     }
 
-    const { rows: stakeRows } = await pool.query(
+    const { rows: stakeRows } = await getPool().query(
       `SELECT * FROM stakes WHERE market_id = $1 ORDER BY created_at DESC`,
       [id]
     )

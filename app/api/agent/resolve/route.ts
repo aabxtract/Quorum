@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import pool from '@/lib/db'
+import { getPool } from '@/lib/db'
 import { getPrice } from '@/lib/price'
 import { getAgentReasoning } from '@/lib/groq'
 import {
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { rows: markets } = await pool.query(`
+  const { rows: markets } = await getPool().query(`
     SELECT * FROM markets
     WHERE status = 'open'
     AND resolves_at <= NOW()
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
   for (const market of markets) {
     try {
-      await pool.query(
+      await getPool().query(
         `UPDATE markets SET status = 'resolving' WHERE id = $1`,
         [market.id]
       )
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
         winningSide,
       })
 
-      await pool.query(
+      await getPool().query(
         `INSERT INTO agent_log (market_id, action, price_at_resolution, reasoning)
          VALUES ($1, $2, $3, $4)`,
         [market.id, `RESOLVED_${winningSide.toUpperCase()}`, currentPrice, reasoning]
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
 
         // Distribute winner payouts one-by-one via routing rules.
         if (winnerPool > 0 && loserPool > 0) {
-          const { rows: winnerStakes } = await pool.query(
+          const { rows: winnerStakes } = await getPool().query(
             `SELECT id, wallet_address, amount FROM stakes
               WHERE market_id = $1 AND side = $2`,
             [market.id, winningSide]
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
             try {
               const txId = await payoutWinner(stake.wallet_address, payout)
               payoutTxs.push({ stakeId: stake.id, txId, amount: payout })
-              await pool.query(
+              await getPool().query(
                 `UPDATE stakes SET payout_amount = $1, payout_tx_hash = $2 WHERE id = $3`,
                 [payout, txId, stake.id]
               )
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
               )
               // Record the calculated amount even if the tx failed, so it can
               // be retried / claimed later.
-              await pool.query(
+              await getPool().query(
                 `UPDATE stakes SET payout_amount = $1 WHERE id = $2`,
                 [payout, stake.id]
               )
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
           }
         } else if (winnerPool > 0 && loserPool === 0) {
           // Everyone was on the winning side — just refund principal.
-          const { rows: winnerStakes } = await pool.query(
+          const { rows: winnerStakes } = await getPool().query(
             `SELECT id, wallet_address, amount FROM stakes
               WHERE market_id = $1 AND side = $2`,
             [market.id, winningSide]
@@ -127,13 +127,13 @@ export async function POST(req: NextRequest) {
             try {
               const txId = await payoutWinner(stake.wallet_address, amt)
               payoutTxs.push({ stakeId: stake.id, txId, amount: amt })
-              await pool.query(
+              await getPool().query(
                 `UPDATE stakes SET payout_amount = $1, payout_tx_hash = $2 WHERE id = $3`,
                 [amt, txId, stake.id]
               )
             } catch (e) {
               console.error(`Refund failed for stake ${stake.id}:`, e)
-              await pool.query(
+              await getPool().query(
                 `UPDATE stakes SET payout_amount = $1 WHERE id = $2`,
                 [amt, stake.id]
               )
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      await pool.query(
+      await getPool().query(
         `UPDATE markets SET
            status = 'resolved',
            winning_side = $1,
@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
       })
     } catch (error) {
       console.error(`Failed to resolve market ${market.id}:`, error)
-      await pool.query(
+      await getPool().query(
         `UPDATE markets SET status = 'open' WHERE id = $1`,
         [market.id]
       )

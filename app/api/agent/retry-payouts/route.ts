@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import pool from '@/lib/db'
+import { getPool } from '@/lib/db'
 import { payoutWinner, agentVault } from '@/lib/flowvault-agent'
 import { sendTelegramMessage } from '@/lib/telegram'
 
@@ -36,7 +36,7 @@ async function handle(req: NextRequest) {
     where += ` AND s.market_id = $${params.length}`
   }
 
-  const { rows: pending } = await pool.query(
+  const { rows: pending } = await getPool().query(
     `SELECT s.id, s.market_id, s.wallet_address, s.side, s.amount,
             s.payout_amount, m.question
        FROM stakes s
@@ -78,7 +78,7 @@ async function handle(req: NextRequest) {
     const payout = parseFloat(stake.payout_amount)
     try {
       const txId = await payoutWinner(stake.wallet_address, payout)
-      await pool.query(
+      await getPool().query(
         `UPDATE stakes SET payout_tx_hash = $1 WHERE id = $2`,
         [txId, stake.id]
       )

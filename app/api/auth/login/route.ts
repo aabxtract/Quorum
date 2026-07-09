@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import pool from '@/lib/db'
+import { getPool } from '@/lib/db'
 import { comparePassword, signJwt } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
   try {
     const { email, password, walletAddress } = await req.json()
 
-    const client = await pool.connect()
+    const client = await getPool().connect()
     try {
       let user: Record<string, unknown> | null = null
 

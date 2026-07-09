@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import pool from '@/lib/db'
+import { getPool } from '@/lib/db'
 import { verifyJwt } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ user: null }, { status: 401 })
     }
 
-    const client = await pool.connect()
+    const client = await getPool().connect()
     try {
       const userResult = await client.query(
         `SELECT id, email, wallet_address, display_name, avatar_url, created_at, last_login_at

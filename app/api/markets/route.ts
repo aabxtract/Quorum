@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import pool from '@/lib/db'
+import { getPool } from '@/lib/db'
 import { sendTelegramMessage } from '@/lib/telegram'
 
 export async function GET(req: NextRequest) {
   try {
-    const { rows } = await pool.query(`
+    const { rows } = await getPool().query(`
       SELECT * FROM markets 
       ORDER BY created_at DESC
     `)
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Resolution time must be in the future' }, { status: 400 })
     }
 
-    const { rows } = await pool.query(`
+    const { rows } = await getPool().query(`
       INSERT INTO markets (question, symbol, target_value, direction, market_type, resolves_at, created_by)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *

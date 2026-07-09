@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import pool from '@/lib/db'
+import { getPool } from '@/lib/db'
 import { sendTelegramMessage } from '@/lib/telegram'
 
 export async function POST(req: NextRequest) {
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
     }
 
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       `SELECT * FROM markets WHERE id = $1 AND status = 'open' AND resolves_at > NOW()`,
       [marketId]
     )
@@ -20,14 +20,14 @@ export async function POST(req: NextRequest) {
     }
     const market = rows[0]
 
-    await pool.query(
+    await getPool().query(
       `INSERT INTO stakes (market_id, wallet_address, side, amount, tx_hash)
        VALUES ($1, $2, $3, $4, $5)`,
       [marketId, walletAddress, side, amount, txHash]
     )
 
     const poolColumn = side === 'yes' ? 'yes_pool' : 'no_pool'
-    await pool.query(
+    await getPool().query(
       `UPDATE markets SET ${poolColumn} = ${poolColumn} + $1 WHERE id = $2`,
       [amount, marketId]
     )

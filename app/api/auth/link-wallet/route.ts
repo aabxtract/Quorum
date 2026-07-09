@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import pool from '@/lib/db'
+import { getPool } from '@/lib/db'
 import { verifyJwt, signJwt } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid Stacks address' }, { status: 400 })
     }
 
-    const client = await pool.connect()
+    const client = await getPool().connect()
     try {
       // Already linked to *this* user? No-op success.
       const current = await client.query(
