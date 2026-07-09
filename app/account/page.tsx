@@ -98,14 +98,22 @@ export default function AccountPage() {
             </h1>
             <p className="text-gray-500 text-sm">{user.email}</p>
           </div>
-          <button
-            id="account-logout"
-            onClick={logout}
-            disabled={loggingOut}
-            className="px-5 py-2.5 bg-white/[0.04] hover:bg-red-500/10 border border-white/10 hover:border-red-500/20 text-gray-400 hover:text-red-400 font-medium rounded-xl text-sm transition-all disabled:opacity-50"
-          >
-            {loggingOut ? 'Signing out…' : 'Sign Out'}
-          </button>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/withdraw"
+              className="px-5 py-2.5 bg-quorum-500/10 hover:bg-quorum-500/20 border border-quorum-500/20 hover:border-quorum-500/40 text-quorum-500 font-medium rounded-xl text-sm transition-all"
+            >
+              Withdraw
+            </Link>
+            <button
+              id="account-logout"
+              onClick={logout}
+              disabled={loggingOut}
+              className="px-5 py-2.5 bg-white/[0.04] hover:bg-red-500/10 border border-white/10 hover:border-red-500/20 text-gray-400 hover:text-red-400 font-medium rounded-xl text-sm transition-all disabled:opacity-50"
+            >
+              {loggingOut ? 'Signing out…' : 'Sign Out'}
+            </button>
+          </div>
         </div>
 
         {/* Stats Grid */}

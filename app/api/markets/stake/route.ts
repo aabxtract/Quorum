@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     // Record stake
     await pool.query(`
-      INSERT INTO stakes (market_id, wallet_address, side, amount, flowvault_tx_hash)
+      INSERT INTO stakes (market_id, wallet_address, side, amount, tx_hash)
       VALUES ($1, $2, $3, $4, $5)
     `, [marketId, walletAddress, side, amount, txHash])
 

@@ -34,7 +34,7 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 }
 
 export default function Home() {
-  const { data, error } = useSWR('/api/markets', fetcher, { refreshInterval: 10000 });
+  const { data, error } = useSWR('/api/markets', fetcher);
   const openMarkets = data?.markets?.filter((m: Market) => m.status === 'open') || [];
 
   return (
@@ -70,7 +70,7 @@ export default function Home() {
           </p>
           
           <Link
-            href="/markets"
+            href="/auth"
             className="px-8 py-3.5 bg-white hover:bg-gray-100 text-[#0A0A0B] font-bold rounded-full transition-all text-sm"
           >
             Get Started Today

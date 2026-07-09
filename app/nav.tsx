@@ -126,12 +126,14 @@ export default function Nav() {
               </div>
             )}
 
-            <Link
-              href="/create"
-              className="hidden sm:block px-6 py-2.5 bg-quorum-500 hover:bg-quorum-400 text-[#0A0A0B] font-bold rounded-lg text-sm transition-all"
-            >
-              Create
-            </Link>
+            {user && (
+              <Link
+                href="/create"
+                className="hidden sm:block px-6 py-2.5 bg-quorum-500 hover:bg-quorum-400 text-[#0A0A0B] font-bold rounded-lg text-sm transition-all"
+              >
+                Create
+              </Link>
+            )}
 
             {/* Mobile burger */}
             <button
@@ -194,13 +196,15 @@ export default function Nav() {
                 Sign In
               </Link>
             )}
-            <Link
-              href="/create"
-              onClick={() => setMobileOpen(false)}
-              className="w-full py-4 text-center bg-quorum-500 text-[#0A0A0B] font-bold rounded-xl"
-            >
-              Create Market
-            </Link>
+            {user && (
+              <Link
+                href="/create"
+                onClick={() => setMobileOpen(false)}
+                className="w-full py-4 text-center bg-quorum-500 text-[#0A0A0B] font-bold rounded-xl"
+              >
+                Create Market
+              </Link>
+            )}
           </div>
         </div>
       )}

@@ -1,6 +1,9 @@
-export async function sendTelegramMessage(text: string): Promise<void> {
+export async function sendTelegramMessage(
+  text: string,
+  chatIdOverride?: string | number
+): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN
-  const chatId = process.env.TELEGRAM_CHAT_ID
+  const chatId = chatIdOverride ?? process.env.TELEGRAM_CHAT_ID
 
   if (!token || !chatId) {
     console.warn('[telegram] Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID')

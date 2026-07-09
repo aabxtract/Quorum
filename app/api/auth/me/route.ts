@@ -32,32 +32,35 @@ export async function GET(req: NextRequest) {
 
       const user = userResult.rows[0]
 
-      // Fetch stake history with market details
-      const stakesResult = await client.query(
-        `SELECT
-           s.id,
-           s.side,
-           s.amount,
-           s.payout_amount,
-           s.tx_hash,
-           s.created_at,
-           m.id   AS market_id,
-           m.question,
-           m.symbol,
-           m.status AS market_status,
-           m.winning_side,
-           m.resolution_price
-         FROM stakes s
-         JOIN markets m ON s.market_id = m.id
-         WHERE s.user_id = $1
-            OR s.wallet_address = $2
-         ORDER BY s.created_at DESC`,
-        [user.id, user.wallet_address || '']
-      )
+      // Fetch stake history with market details (matched by wallet_address)
+      let stakes: any[] = []
+      if (user.wallet_address) {
+        const stakesResult = await client.query(
+          `SELECT
+             s.id,
+             s.side,
+             s.amount,
+             s.payout_amount,
+             s.tx_hash,
+             s.created_at,
+             m.id   AS market_id,
+             m.question,
+             m.symbol,
+             m.status AS market_status,
+             m.winning_side,
+             m.resolution_price
+           FROM stakes s
+           JOIN markets m ON s.market_id = m.id
+           WHERE s.wallet_address = $1
+           ORDER BY s.created_at DESC`,
+          [user.wallet_address]
+        )
+        stakes = stakesResult.rows
+      }
 
       return NextResponse.json({
         user,
-        stakes: stakesResult.rows,
+        stakes,
       })
     } finally {
       client.release()

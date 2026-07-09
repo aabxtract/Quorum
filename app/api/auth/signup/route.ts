@@ -47,12 +47,13 @@ export async function POST(req: NextRequest) {
       }
 
       const passwordHash = password ? await hashPassword(password) : null
+      const authMethod = walletAddress ? 'wallet' : 'email'
 
       const result = await client.query(
-        `INSERT INTO users (email, password_hash, wallet_address, last_login_at)
-         VALUES ($1, $2, $3, NOW())
+        `INSERT INTO users (email, password_hash, wallet_address, auth_method, last_login_at)
+         VALUES ($1, $2, $3, $4, NOW())
          RETURNING id, email, wallet_address, display_name, avatar_url, created_at`,
-        [email.toLowerCase(), passwordHash, walletAddress || null]
+        [email.toLowerCase(), passwordHash, walletAddress || null, authMethod]
       )
 
       const user = result.rows[0]

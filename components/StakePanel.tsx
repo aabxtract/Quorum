@@ -1,5 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { createBrowserVault } from '@/lib/flowvault-browser'
+import { toMicro } from '@/lib/flowvault-agent'
 
 export default function StakePanel({ marketId, onStaked }: {
   marketId: string
@@ -9,9 +11,10 @@ export default function StakePanel({ marketId, onStaked }: {
   const [side, setSide] = useState<'yes' | 'no'>('yes')
   const [amount, setAmount] = useState('')
   const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState<string>('')
+  const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState('')
 
-  // Read wallet address from session (same pattern as WalletConnect.tsx)
   useEffect(() => {
     import('@stacks/connect').then(({ AppConfig, UserSession }) => {
       try {
@@ -23,19 +26,31 @@ export default function StakePanel({ marketId, onStaked }: {
           setWalletAddress(addr)
         }
       } catch {
-        // session not ready
+        /* session not ready */
       }
     })
   }, [])
 
   async function handleStake() {
     if (!walletAddress) return setError('Connect wallet first')
-    if (!amount || parseFloat(amount) <= 0) return setError('Enter a valid amount')
+    const amt = parseFloat(amount)
+    if (!amt || amt <= 0) return setError('Enter a valid amount')
 
     setLoading(true)
     setError('')
+    setTxHash(null)
 
     try {
+      // 1. Escrow USDCx on-chain via FlowVault (user signs in Hiro wallet)
+      setStatus('Requesting wallet signature…')
+      const vault = createBrowserVault(walletAddress)
+      const result = await vault.deposit(toMicro(amt))
+      const depositTxId: string | undefined = (result as any)?.txId || (result as any)?.txid
+      if (!depositTxId) throw new Error('Wallet did not return a tx id')
+      setTxHash(depositTxId)
+
+      // 2. Record the stake in Postgres with the on-chain tx hash
+      setStatus('Recording stake…')
       const res = await fetch('/api/markets/stake', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -43,18 +58,25 @@ export default function StakePanel({ marketId, onStaked }: {
           marketId,
           walletAddress,
           side,
-          amount: parseFloat(amount),
-          txHash: null // FlowVault tx initiated server-side on resolution
-        })
+          amount: amt,
+          txHash: depositTxId,
+        }),
       })
 
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to record stake')
 
+      setStatus('Stake confirmed')
       setAmount('')
       onStaked()
     } catch (e: any) {
-      setError(e.message || 'Failed to stake')
+      // Distinguish user-cancelled wallet prompt from real errors
+      const msg = e?.message || String(e)
+      if (/user (rejected|denied|cancel)/i.test(msg)) {
+        setError('Signature cancelled')
+      } else {
+        setError(msg || 'Failed to stake')
+      }
     } finally {
       setLoading(false)
     }
@@ -76,6 +98,7 @@ export default function StakePanel({ marketId, onStaked }: {
       <div className="flex gap-2 mb-5">
         <button
           onClick={() => setSide('yes')}
+          disabled={loading}
           className={`flex-1 py-3 rounded-xl font-bold text-sm transition-colors ${
             side === 'yes'
               ? 'bg-green-500 text-white'
@@ -86,6 +109,7 @@ export default function StakePanel({ marketId, onStaked }: {
         </button>
         <button
           onClick={() => setSide('no')}
+          disabled={loading}
           className={`flex-1 py-3 rounded-xl font-bold text-sm transition-colors ${
             side === 'no'
               ? 'bg-red-500 text-white'
@@ -101,21 +125,38 @@ export default function StakePanel({ marketId, onStaked }: {
         placeholder="Amount (USDCx)"
         value={amount}
         onChange={e => setAmount(e.target.value)}
-        className="w-full bg-[#0A0A0B] border border-white/10 rounded-xl px-4 py-3 text-white text-sm mb-4 focus:outline-none focus:border-quorum-500/50"
+        disabled={loading}
+        className="w-full bg-[#0A0A0B] border border-white/10 rounded-xl px-4 py-3 text-white text-sm mb-4 focus:outline-none focus:border-quorum-500/50 disabled:opacity-50"
       />
 
       {error && <p className="text-red-400 text-xs mb-3">{error}</p>}
+      {loading && status && (
+        <p className="text-quorum-500 text-xs mb-3 animate-pulse">{status}</p>
+      )}
+      {txHash && !error && (
+        <p className="text-xs text-gray-400 mb-3">
+          Deposit tx:{' '}
+          <a
+            href={`https://explorer.hiro.so/txid/${txHash}?chain=testnet`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-quorum-500 hover:underline font-mono"
+          >
+            {txHash.slice(0, 10)}…{txHash.slice(-6)}
+          </a>
+        </p>
+      )}
 
       <button
         onClick={handleStake}
         disabled={loading}
         className="w-full bg-quorum-500 hover:bg-quorum-400 disabled:opacity-50 text-[#0A0A0B] font-bold py-3 rounded-xl text-sm transition-colors"
       >
-        {loading ? 'Staking...' : `Stake ${side.toUpperCase()}${amount ? ` — ${amount} USDCx` : ''}`}
+        {loading ? 'Processing…' : `Stake ${side.toUpperCase()}${amount ? ` — ${amount} USDCx` : ''}`}
       </button>
 
       <p className="text-gray-600 text-xs text-center mt-4">
-        No claiming needed · FlowVault auto-settles
+        Escrowed in FlowVault · Winners auto-settled on resolution
       </p>
     </div>
   )
