@@ -7,15 +7,35 @@ import {
   USDCX_CONTRACT_NAME,
 } from './flowvault-config'
 
-export const agentVault = new FlowVault({
-  network: FLOWVAULT_NETWORK as any,
-  contractAddress: FLOWVAULT_CONTRACT_ADDRESS,
-  contractName: FLOWVAULT_CONTRACT_NAME,
-  tokenContractAddress: USDCX_CONTRACT_ADDRESS,
-  tokenContractName: USDCX_CONTRACT_NAME,
-  senderKey:
-    process.env.STACKS_PRIVATE_KEY ||
-    '0x0000000000000000000000000000000000000000000000000000000000000000',
+// Lazy singleton — Next.js "collect page data" build step evaluates modules
+// without runtime env vars, and the SDK's URL parsing chokes if we init at
+// module scope. Only construct on first use.
+let _agentVault: FlowVault | null = null
+
+export function getAgentVault(): FlowVault {
+  if (!_agentVault) {
+    _agentVault = new FlowVault({
+      network: FLOWVAULT_NETWORK as any,
+      contractAddress: FLOWVAULT_CONTRACT_ADDRESS,
+      contractName: FLOWVAULT_CONTRACT_NAME,
+      tokenContractAddress: USDCX_CONTRACT_ADDRESS,
+      tokenContractName: USDCX_CONTRACT_NAME,
+      senderKey:
+        process.env.STACKS_PRIVATE_KEY ||
+        '0x0000000000000000000000000000000000000000000000000000000000000000',
+    })
+  }
+  return _agentVault
+}
+
+// Proxy so existing `agentVault.deposit(...)` style imports keep working
+// without invoking the constructor at import time.
+export const agentVault: FlowVault = new Proxy({} as FlowVault, {
+  get(_target, prop) {
+    const v = getAgentVault() as any
+    const val = v[prop]
+    return typeof val === 'function' ? val.bind(v) : val
+  },
 })
 
 // Micro token conversion (USDCx = 6 decimals)
@@ -32,27 +52,27 @@ export async function executeAtomicSettlement(params: {
   winnerAddress: string
 }): Promise<string> {
   const { totalPool, loserPool } = params
+  const vault = getAgentVault()
 
   const protocolFee = loserPool * 0.05
   const winnerPayout = loserPool * 0.95
 
-  const currentBlock = await agentVault.getCurrentBlockHeight(
+  const currentBlock = await vault.getCurrentBlockHeight(
     process.env.STACKS_WALLET_ADDRESS || ''
   )
 
-  // ATOMIC CYCLE — 4 steps
-  await agentVault.clearRoutingRules()
+  await vault.clearRoutingRules()
 
-  await agentVault.setRoutingRules({
+  await vault.setRoutingRules({
     splitAddress: process.env.TREASURY_WALLET || '',
     splitAmount: toMicro(winnerPayout),
     lockAmount: toMicro(protocolFee),
     lockUntilBlock: currentBlock + 1000,
   })
 
-  const settleTx = await agentVault.deposit(toMicro(totalPool))
+  const settleTx = await vault.deposit(toMicro(totalPool))
 
-  await agentVault.clearRoutingRules()
+  await vault.clearRoutingRules()
 
   return settleTx.txId
 }
@@ -61,23 +81,21 @@ export async function executeAtomicSettlement(params: {
  * Route a single winner payout from the agent vault to the winner's vault.
  * Uses a one-shot routing rule (split to winner, no lock), deposits the
  * payout amount, then clears the rule. Returns the on-chain tx id.
- *
- * The caller is responsible for calling clearRoutingRules() after the loop
- * finishes if it batches multiple payouts back-to-back.
  */
 export async function payoutWinner(
   winnerAddress: string,
   payoutUsdcx: number
 ): Promise<string> {
   if (payoutUsdcx <= 0) throw new Error('payout must be positive')
+  const vault = getAgentVault()
 
-  await agentVault.setRoutingRules({
+  await vault.setRoutingRules({
     splitAddress: winnerAddress,
     splitAmount: toMicro(payoutUsdcx),
     lockAmount: '0',
     lockUntilBlock: 0,
   })
 
-  const tx = await agentVault.deposit(toMicro(payoutUsdcx))
+  const tx = await vault.deposit(toMicro(payoutUsdcx))
   return tx.txId
 }

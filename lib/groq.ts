@@ -1,6 +1,10 @@
 import Groq from 'groq-sdk'
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+let _groq: Groq | null = null
+function getGroq(): Groq {
+  if (!_groq) _groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+  return _groq
+}
 
 export async function getAgentReasoning(params: {
   question: string
@@ -11,7 +15,7 @@ export async function getAgentReasoning(params: {
 }): Promise<string> {
   const { question, currentPrice, targetValue, direction, winningSide } = params
 
-  const response = await groq.chat.completions.create({
+  const response = await getGroq().chat.completions.create({
     model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
     max_tokens: 150,
     messages: [
