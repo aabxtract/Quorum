@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPool } from '@/lib/db'
 import { sendTelegramMessage } from '@/lib/telegram'
+import { recordStakeOnChain } from '@/lib/quorum-agent'
 
 export async function POST(req: NextRequest) {
   try {
@@ -31,6 +32,13 @@ export async function POST(req: NextRequest) {
       `UPDATE markets SET ${poolColumn} = ${poolColumn} + $1 WHERE id = $2`,
       [amount, marketId]
     )
+
+    // Record stake on-chain registry (non-blocking — don't fail the request if it errors)
+    try {
+      await recordStakeOnChain(marketId, walletAddress, side, parseFloat(amount))
+    } catch (chainErr: any) {
+      console.error(`[stake] on-chain record-stake failed: ${chainErr?.message}`)
+    }
 
     const trunc = `${walletAddress.slice(0, 6)}…${walletAddress.slice(-4)}`
     sendTelegramMessage(

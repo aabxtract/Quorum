@@ -59,42 +59,10 @@ export const toMicro = (amount: number): string =>
 export const fromMicro = (micro: string | number): number =>
   Number(BigInt(String(micro))) / 1_000_000
 
-export async function executeAtomicSettlement(params: {
-  totalPool: number
-  winnerPool: number
-  loserPool: number
-  winnerAddress: string
-}): Promise<string> {
-  const { totalPool, loserPool } = params
-  const vault = getAgentVault()
-
-  const protocolFee = loserPool * 0.05
-  const winnerPayout = loserPool * 0.95
-
-  const currentBlock = await vault.getCurrentBlockHeight(
-    process.env.STACKS_WALLET_ADDRESS || ''
-  )
-
-  await vault.clearRoutingRules()
-
-  await vault.setRoutingRules({
-    splitAddress: process.env.TREASURY_WALLET || '',
-    splitAmount: toMicro(winnerPayout),
-    lockAmount: toMicro(protocolFee),
-    lockUntilBlock: currentBlock + 1000,
-  })
-
-  const settleTx = await vault.deposit(toMicro(totalPool))
-
-  await vault.clearRoutingRules()
-
-  return settleTx.txId
-}
-
 /**
- * Route a single winner payout from the agent vault to the winner's vault.
- * Uses a one-shot routing rule (split to winner, no lock), deposits the
- * payout amount, then clears the rule. Returns the on-chain tx id.
+ * Route a single winner payout from the agent vault to the winner's wallet.
+ * Clears any previous routing rules, sets a one-shot split to the winner,
+ * deposits the payout amount, then clears the rule. Returns the on-chain tx id.
  */
 export async function payoutWinner(
   winnerAddress: string,
@@ -103,6 +71,7 @@ export async function payoutWinner(
   if (payoutUsdcx <= 0) throw new Error('payout must be positive')
   const vault = getAgentVault()
 
+  await vault.clearRoutingRules()
   await vault.setRoutingRules({
     splitAddress: winnerAddress,
     splitAmount: toMicro(payoutUsdcx),

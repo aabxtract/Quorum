@@ -1,49 +1,54 @@
 ;; ============================================================
-;; Quorum Market Contract
-;; Stacks testnet — Clarity v1
+;; Quorum Market Registry -- Clarity v1
+;; Stacks testnet
+;;
+;; On-chain transparency layer for Quorum prediction markets.
+;; Token custody is handled entirely by the agent's FlowVault vault.
+;; This contract only records market state and stake records.
 ;;
 ;; Two actors:
-;;   USER  — stakes USDCx on YES or NO
-;;   AGENT — resolves market, triggers winner payouts
+;;   AGENT -- creates markets, records stakes, resolves outcomes
+;;   USER  -- visible on-chain as staker (recorded by agent)
 ;;
-;; Flow per market:
-;;   1. User calls (stake market-id side amount)
-;;      → USDCx transferred from user → this contract
-;;      → stake recorded
-;;   2. Agent calls (resolve market-id winning-side resolution-price)
-;;      → marks winner side
-;;      → loops over winner stakes, sends each winner their pro-rata payout
-;;      → 5% protocol fee stays in contract (agent can sweep later)
+;; Flow:
+;;   1. Agent calls create-market when a market is opened in the DB
+;;   2. After a user's FlowVault deposit confirms, agent calls record-stake
+;;   3. Agent calls resolve-market when the market expires
 ;; ============================================================
 
-;; ── SIP-010 USDCx trait ─────────────────────────────────────
-(define-trait sip010-trait
-  (
-    (transfer (uint principal principal (optional (buff 34))) (response bool uint))
-    (get-balance (principal) (response uint uint))
+;; -- Ownership -------------------------------------------------
+(define-data-var contract-owner principal tx-sender)
+
+(define-public (transfer-ownership (new-owner principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-OWNER)
+    (var-set contract-owner new-owner)
+    (ok true)
   )
 )
 
-;; ── Constants ───────────────────────────────────────────────
-(define-constant CONTRACT-OWNER tx-sender)
-(define-constant PROTOCOL-FEE-BPS u500)        ;; 5% = 500 basis points
-(define-constant BPS-BASE u10000)
-(define-constant ERR-NOT-OWNER          (err u100))
-(define-constant ERR-MARKET-NOT-OPEN    (err u101))
-(define-constant ERR-MARKET-NOT-FOUND   (err u102))
-(define-constant ERR-ALREADY-RESOLVED   (err u103))
-(define-constant ERR-INVALID-SIDE       (err u104))
-(define-constant ERR-ZERO-AMOUNT        (err u105))
-(define-constant ERR-TRANSFER-FAILED    (err u106))
-(define-constant ERR-MARKET-EXISTS      (err u107))
-(define-constant ERR-NOT-AGENT          (err u108))
+;; -- Side constants --------------------------------------------
+;; u1 = YES  u0 = NO
+(define-constant SIDE-YES u1)
+(define-constant SIDE-NO  u0)
 
-;; ── Authorised agent (set once by owner) ────────────────────
-(define-data-var agent-address principal CONTRACT-OWNER)
+;; -- Error codes ------------------------------------------------
+(define-constant ERR-NOT-OWNER           (err u100))
+(define-constant ERR-MARKET-NOT-OPEN     (err u101))
+(define-constant ERR-MARKET-NOT-FOUND    (err u102))
+(define-constant ERR-ALREADY-RESOLVED    (err u103))
+(define-constant ERR-INVALID-SIDE        (err u104))
+(define-constant ERR-ZERO-AMOUNT         (err u105))
+(define-constant ERR-MARKET-EXISTS       (err u107))
+(define-constant ERR-NOT-AGENT           (err u108))
+(define-constant ERR-MARKET-NOT-RESOLVED (err u109))
+
+;; -- Agent ------------------------------------------------------
+(define-data-var agent-address principal (var-get contract-owner))
 
 (define-public (set-agent (new-agent principal))
   (begin
-    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-OWNER)
+    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-OWNER)
     (var-set agent-address new-agent)
     (ok true)
   )
@@ -53,79 +58,66 @@
   (var-get agent-address)
 )
 
-;; ── Market storage ───────────────────────────────────────────
-;; status: 0=open 1=resolved
+;; -- Market storage ---------------------------------------------
+;; status:       u0=open  u1=resolved
+;; winning-side: none until resolved -> (some u1)=YES  (some u0)=NO
 (define-map markets
   { market-id: (string-ascii 36) }
   {
-    status:           uint,      ;; 0=open 1=resolved
-    yes-pool:         uint,      ;; micro-USDCx
+    status:           uint,
+    yes-pool:         uint,   ;; micro-USDCx, mirrors FlowVault deposits
     no-pool:          uint,
-    winning-side:     (string-ascii 3),   ;; "yes" or "no" or ""
-    resolution-price: uint,      ;; price * 1e8 (8 decimal fixed point)
+    winning-side:     (optional uint),
+    resolution-price: uint,   ;; price * 1e8
   }
 )
 
-;; ── Stake storage ────────────────────────────────────────────
+;; -- Stake storage ----------------------------------------------
+;; Records each staker's position. Actual USDCx sits in agent's FlowVault.
+;; side: u1=YES  u0=NO
 (define-map stakes
-  { market-id: (string-ascii 36), staker: principal, side: (string-ascii 3) }
+  { market-id: (string-ascii 36), staker: principal, side: uint }
   { amount: uint, paid-out: bool }
 )
 
-;; Convenience: total staked by address in a market (any side)
-(define-map staker-total
-  { market-id: (string-ascii 36), staker: principal }
-  { total: uint }
-)
-
-;; ── Create market ────────────────────────────────────────────
-;; Only the agent can open a market (called server-side when market is created in DB)
+;; -- Create market ----------------------------------------------
+;; Agent calls once when a market opens in the DB.
 (define-public (create-market (market-id (string-ascii 36)))
   (begin
     (asserts! (is-eq tx-sender (var-get agent-address)) ERR-NOT-AGENT)
     (asserts! (is-none (map-get? markets { market-id: market-id })) ERR-MARKET-EXISTS)
     (map-set markets
       { market-id: market-id }
-      { status: u0, yes-pool: u0, no-pool: u0, winning-side: "", resolution-price: u0 }
+      { status: u0, yes-pool: u0, no-pool: u0, winning-side: none, resolution-price: u0 }
     )
     (ok true)
   )
 )
 
-;; ── Stake ────────────────────────────────────────────────────
-;; User calls this directly via Hiro wallet.
-;; amount is in micro-USDCx (6 decimals → 1 USDCx = 1_000_000)
-(define-public (stake
-    (usdcx-contract <sip010-trait>)
+;; -- Record stake -----------------------------------------------
+;; Agent calls after a user's FlowVault deposit is confirmed on-chain.
+;; amount is micro-USDCx (1 USDCx = 1_000_000).
+(define-public (record-stake
     (market-id (string-ascii 36))
-    (side (string-ascii 3))
+    (staker principal)
+    (side uint)
     (amount uint))
   (let (
     (market (unwrap! (map-get? markets { market-id: market-id }) ERR-MARKET-NOT-FOUND))
-    (existing-stake (default-to { amount: u0, paid-out: false }
-      (map-get? stakes { market-id: market-id, staker: tx-sender, side: side })))
+    (existing (default-to { amount: u0, paid-out: false }
+      (map-get? stakes { market-id: market-id, staker: staker, side: side })))
   )
-    ;; Validations
+    (asserts! (is-eq tx-sender (var-get agent-address)) ERR-NOT-AGENT)
     (asserts! (is-eq (get status market) u0) ERR-MARKET-NOT-OPEN)
-    (asserts! (or (is-eq side "yes") (is-eq side "no")) ERR-INVALID-SIDE)
+    (asserts! (or (is-eq side SIDE-YES) (is-eq side SIDE-NO)) ERR-INVALID-SIDE)
     (asserts! (> amount u0) ERR-ZERO-AMOUNT)
 
-    ;; Pull USDCx from user into this contract
-    (try! (contract-call? usdcx-contract transfer
-      amount
-      tx-sender
-      (as-contract tx-sender)
-      none
-    ))
-
-    ;; Update stake record
     (map-set stakes
-      { market-id: market-id, staker: tx-sender, side: side }
-      { amount: (+ (get amount existing-stake) amount), paid-out: false }
+      { market-id: market-id, staker: staker, side: side }
+      { amount: (+ (get amount existing) amount), paid-out: false }
     )
 
-    ;; Update pool totals
-    (if (is-eq side "yes")
+    (if (is-eq side SIDE-YES)
       (map-set markets { market-id: market-id }
         (merge market { yes-pool: (+ (get yes-pool market) amount) }))
       (map-set markets { market-id: market-id }
@@ -136,100 +128,25 @@
   )
 )
 
-;; ── Read stake ───────────────────────────────────────────────
-(define-read-only (get-stake (market-id (string-ascii 36)) (staker principal) (side (string-ascii 3)))
-  (map-get? stakes { market-id: market-id, staker: staker, side: side })
-)
-
-(define-read-only (get-market (market-id (string-ascii 36)))
-  (map-get? markets { market-id: market-id })
-)
-
-;; ── Payout single winner (called by agent in a loop) ─────────
-;; Agent calls this once per winning stake after resolving.
-;; Sends the staker their principal + pro-rata share of the loser pool (minus fee).
-(define-public (payout-winner
-    (usdcx-contract <sip010-trait>)
-    (market-id (string-ascii 36))
-    (staker principal)
-    (payout-amount uint))
-  (let (
-    (stake-rec (unwrap! (map-get? stakes { market-id: market-id, staker: staker, side: "yes" }) ERR-MARKET-NOT-FOUND))
-    (market (unwrap! (map-get? markets { market-id: market-id }) ERR-MARKET-NOT-FOUND))
-  )
-    (asserts! (is-eq tx-sender (var-get agent-address)) ERR-NOT-AGENT)
-    (asserts! (is-eq (get status market) u1) ERR-MARKET-NOT-OPEN)
-    (asserts! (not (get paid-out stake-rec)) ERR-ALREADY-RESOLVED)
-
-    ;; Send payout from contract to winner
-    (try! (as-contract
-      (contract-call? usdcx-contract transfer
-        payout-amount
-        tx-sender
-        staker
-        none
-      )
-    ))
-
-    ;; Mark paid out
-    (map-set stakes
-      { market-id: market-id, staker: staker, side: "yes" }
-      (merge stake-rec { paid-out: true })
-    )
-    (ok true)
-  )
-)
-
-;; Same for NO winners — separate function to keep Clarity simple
-(define-public (payout-winner-no
-    (usdcx-contract <sip010-trait>)
-    (market-id (string-ascii 36))
-    (staker principal)
-    (payout-amount uint))
-  (let (
-    (stake-rec (unwrap! (map-get? stakes { market-id: market-id, staker: staker, side: "no" }) ERR-MARKET-NOT-FOUND))
-    (market (unwrap! (map-get? markets { market-id: market-id }) ERR-MARKET-NOT-FOUND))
-  )
-    (asserts! (is-eq tx-sender (var-get agent-address)) ERR-NOT-AGENT)
-    (asserts! (is-eq (get status market) u1) ERR-MARKET-NOT-OPEN)
-    (asserts! (not (get paid-out stake-rec)) ERR-ALREADY-RESOLVED)
-
-    (try! (as-contract
-      (contract-call? usdcx-contract transfer
-        payout-amount
-        tx-sender
-        staker
-        none
-      )
-    ))
-
-    (map-set stakes
-      { market-id: market-id, staker: staker, side: "no" }
-      (merge stake-rec { paid-out: true })
-    )
-    (ok true)
-  )
-)
-
-;; ── Resolve market ───────────────────────────────────────────
-;; Agent calls this to mark a market resolved.
-;; Actual payout calls happen separately (payout-winner / payout-winner-no).
+;; -- Resolve market ---------------------------------------------
+;; Agent calls once when the market expires.
+;; Actual payouts are executed via FlowVault routing rules (off this contract).
 (define-public (resolve-market
     (market-id (string-ascii 36))
-    (winning-side (string-ascii 3))
+    (winning-side uint)
     (resolution-price uint))
   (let (
     (market (unwrap! (map-get? markets { market-id: market-id }) ERR-MARKET-NOT-FOUND))
   )
     (asserts! (is-eq tx-sender (var-get agent-address)) ERR-NOT-AGENT)
     (asserts! (is-eq (get status market) u0) ERR-ALREADY-RESOLVED)
-    (asserts! (or (is-eq winning-side "yes") (is-eq winning-side "no")) ERR-INVALID-SIDE)
+    (asserts! (or (is-eq winning-side SIDE-YES) (is-eq winning-side SIDE-NO)) ERR-INVALID-SIDE)
 
     (map-set markets
       { market-id: market-id }
       (merge market {
         status: u1,
-        winning-side: winning-side,
+        winning-side: (some winning-side),
         resolution-price: resolution-price,
       })
     )
@@ -237,20 +154,33 @@
   )
 )
 
-;; ── Agent sweeps protocol fee ────────────────────────────────
-;; Any leftover USDCx in the contract (5% fee + unclaimed loser pool)
-;; can be swept by the agent wallet.
-(define-public (sweep-fees (usdcx-contract <sip010-trait>) (amount uint))
-  (begin
+;; -- Mark paid out ----------------------------------------------
+;; Agent calls after FlowVault payout tx confirms, to record it on-chain.
+(define-public (mark-paid-out
+    (market-id (string-ascii 36))
+    (staker principal))
+  (let (
+    (market   (unwrap! (map-get? markets { market-id: market-id }) ERR-MARKET-NOT-FOUND))
+    (win-side (unwrap! (get winning-side market) ERR-MARKET-NOT-RESOLVED))
+    (stake-rec (unwrap! (map-get? stakes { market-id: market-id, staker: staker, side: win-side }) ERR-MARKET-NOT-FOUND))
+  )
     (asserts! (is-eq tx-sender (var-get agent-address)) ERR-NOT-AGENT)
-    (try! (as-contract
-      (contract-call? usdcx-contract transfer
-        amount
-        tx-sender
-        (var-get agent-address)
-        none
-      )
-    ))
+    (asserts! (is-eq (get status market) u1) ERR-MARKET-NOT-RESOLVED)
+    (asserts! (not (get paid-out stake-rec)) ERR-ALREADY-RESOLVED)
+
+    (map-set stakes
+      { market-id: market-id, staker: staker, side: win-side }
+      (merge stake-rec { paid-out: true })
+    )
     (ok true)
   )
+)
+
+;; -- Read helpers -----------------------------------------------
+(define-read-only (get-market (market-id (string-ascii 36)))
+  (map-get? markets { market-id: market-id })
+)
+
+(define-read-only (get-stake (market-id (string-ascii 36)) (staker principal) (side uint))
+  (map-get? stakes { market-id: market-id, staker: staker, side: side })
 )

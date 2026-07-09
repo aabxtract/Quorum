@@ -1,5 +1,6 @@
-// Server-side agent contract calls for the Quorum market contract.
-// Uses @stacks/transactions to sign + broadcast without a wallet UI.
+// Server-side calls to the Quorum market registry contract.
+// Handles market creation, stake recording, and resolution on-chain.
+// Actual token movement (deposits + payouts) is handled by FlowVault.
 
 import {
   makeContractCall,
@@ -8,24 +9,21 @@ import {
   PostConditionMode,
   stringAsciiCV,
   uintCV,
-  contractPrincipalCV,
   standardPrincipalCV,
 } from '@stacks/transactions'
 import { StacksTestnet, StacksMainnet } from '@stacks/network'
 import {
   QUORUM_CONTRACT_ADDRESS,
   QUORUM_CONTRACT_NAME,
-  USDCX_CONTRACT_ADDRESS,
-  USDCX_CONTRACT_NAME,
   STACKS_NETWORK,
 } from './quorum-config'
 
-// Micro-USDCx helpers (6 decimals)
-export const toMicro = (amount: number): bigint =>
-  BigInt(Math.floor(amount * 1_000_000))
+export const toMicro  = (amount: number): bigint => BigInt(Math.floor(amount * 1_000_000))
+export const fromMicro = (micro: string | number): number => Number(BigInt(String(micro))) / 1_000_000
 
-export const fromMicro = (micro: string | number): number =>
-  Number(BigInt(String(micro))) / 1_000_000
+// Contract side encoding: u1 = YES, u0 = NO
+const SIDE_YES = 1n
+const SIDE_NO  = 0n
 
 function getNetwork() {
   return STACKS_NETWORK === 'mainnet' ? new StacksMainnet() : new StacksTestnet()
@@ -36,16 +34,13 @@ function requirePrivateKey(): string {
   if (!raw || raw.includes(' ')) {
     throw new Error(
       'STACKS_PRIVATE_KEY must be a 64-char hex key. ' +
-      'Generate one with: npx @stacks/cli make_keychain -t  (then copy privateKey)'
+      'Generate with: npx @stacks/cli make_keychain -t  then copy privateKey'
     )
   }
   return raw
 }
 
-async function callContract(
-  functionName: string,
-  functionArgs: any[]
-): Promise<string> {
+async function callContract(functionName: string, functionArgs: any[]): Promise<string> {
   const tx = await makeContractCall({
     contractAddress: QUORUM_CONTRACT_ADDRESS,
     contractName: QUORUM_CONTRACT_NAME,
@@ -64,16 +59,29 @@ async function callContract(
   return (result as any).txid as string
 }
 
-// ── Create market ────────────────────────────────────────────────────────────
-// Call once when a market is saved to the DB. The agent wallet must be set as
-// the authorised agent on the contract (via set-agent).
+// ── Create market on-chain registry ───────────────────────────
 export async function createMarketOnChain(marketId: string): Promise<string> {
   return callContract('create-market', [stringAsciiCV(marketId)])
 }
 
-// ── Resolve market ───────────────────────────────────────────────────────────
-// winningSide: 'yes' | 'no'
-// resolutionPrice: actual price * 1e8 (e.g. BTC $62345.78 → 6234578000000)
+// ── Record a confirmed FlowVault stake on-chain ───────────────
+// Called after the user's deposit tx is confirmed on Stacks.
+export async function recordStakeOnChain(
+  marketId: string,
+  stakerAddress: string,
+  side: 'yes' | 'no',
+  amountUsdcx: number
+): Promise<string> {
+  return callContract('record-stake', [
+    stringAsciiCV(marketId),
+    standardPrincipalCV(stakerAddress),
+    uintCV(side === 'yes' ? SIDE_YES : SIDE_NO),
+    uintCV(toMicro(amountUsdcx)),
+  ])
+}
+
+// ── Resolve market on-chain registry ──────────────────────────
+// Marks the market resolved on-chain. FlowVault routing handles actual payouts.
 export async function resolveMarketOnChain(
   marketId: string,
   winningSide: 'yes' | 'no',
@@ -81,25 +89,19 @@ export async function resolveMarketOnChain(
 ): Promise<string> {
   return callContract('resolve-market', [
     stringAsciiCV(marketId),
-    stringAsciiCV(winningSide),
+    uintCV(winningSide === 'yes' ? SIDE_YES : SIDE_NO),
     uintCV(BigInt(Math.round(resolutionPrice * 1e8))),
   ])
 }
 
-// ── Payout winner ────────────────────────────────────────────────────────────
-// side: 'yes' | 'no' — determines which contract function to call
-// payoutUsdcx: full payout in USDCx (not micro)
-export async function payoutWinnerOnChain(
+// ── Mark winner paid out on-chain ─────────────────────────────
+// Called after FlowVault payout tx confirms.
+export async function markPaidOutOnChain(
   marketId: string,
-  stakerAddress: string,
-  payoutUsdcx: number,
-  side: 'yes' | 'no'
+  stakerAddress: string
 ): Promise<string> {
-  const fnName = side === 'yes' ? 'payout-winner' : 'payout-winner-no'
-  return callContract(fnName, [
-    contractPrincipalCV(USDCX_CONTRACT_ADDRESS, USDCX_CONTRACT_NAME),
+  return callContract('mark-paid-out', [
     stringAsciiCV(marketId),
     standardPrincipalCV(stakerAddress),
-    uintCV(toMicro(payoutUsdcx)),
   ])
 }

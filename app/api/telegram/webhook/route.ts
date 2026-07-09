@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       ])
       await sendTelegramMessage(
         `📊 *Quorum Status*\n\n` +
-          `Open markets: *${openM[0].c}*\n` +
+          `Closed markets: *${resolvedM[0].c}*\n` +
           `Resolved: *${resolvedM[0].c}*\n` +
           `Total stakes recorded: *${stakeAgg[0].c}* (${stakeAgg[0].total.toFixed(2)} USDCx)`,
         chatId

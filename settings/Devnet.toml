@@ -1,0 +1,9 @@
+[network]
+name = "devnet"
+deployment_fee_rate = 10
+
+[accounts.deployer]
+mnemonic = "pig gasp slogan doctor useless walnut struggle catalog wonder cliff wisdom patient naive enable symbol umbrella sweet civil produce clinic design crew glare muscle"
+
+[accounts.wallet_1]
+mnemonic = "pig gasp slogan doctor useless walnut struggle catalog wonder cliff wisdom patient naive enable symbol umbrella sweet civil produce clinic design crew glare muscle"

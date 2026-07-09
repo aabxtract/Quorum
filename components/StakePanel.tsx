@@ -1,7 +1,10 @@
 'use client'
 import { useState } from 'react'
 import { useWallet } from '@/lib/wallet-context'
-import { stakeOnChain } from '@/lib/quorum-browser'
+import { createBrowserVault } from '@/lib/flowvault-browser'
+
+const toMicro = (amount: number): string =>
+  BigInt(Math.floor(amount * 1_000_000)).toString()
 
 export default function StakePanel({ marketId, onStaked }: {
   marketId: string
@@ -28,17 +31,15 @@ export default function StakePanel({ marketId, onStaked }: {
     setTxHash(null)
 
     try {
-      // 1. Call stake() on the Quorum contract — opens Hiro wallet popup
+      // 1. Deposit USDCx into the agent's FlowVault vault via Hiro wallet
       setStatus('Requesting wallet signature…')
-      const { txId } = await stakeOnChain({
-        marketId,
-        side,
-        amountUsdcx: amt,
-        senderAddress: walletAddress,
-      })
-      setTxHash(txId)
+      const vault = createBrowserVault(walletAddress)
+      const result = await vault.deposit(toMicro(amt))
+      const depositTxId: string | undefined = (result as any)?.txId || (result as any)?.txid
+      if (!depositTxId) throw new Error('Wallet did not return a tx id')
+      setTxHash(depositTxId)
 
-      // 2. Record the stake in Postgres with the on-chain tx hash
+      // 2. Record the stake in Postgres + trigger on-chain registry update
       setStatus('Recording stake…')
       const res = await fetch('/api/markets/stake', {
         method: 'POST',
@@ -48,7 +49,7 @@ export default function StakePanel({ marketId, onStaked }: {
           walletAddress,
           side,
           amount: amt,
-          txHash: txId,
+          txHash: depositTxId,
         }),
       })
 
@@ -145,7 +146,7 @@ export default function StakePanel({ marketId, onStaked }: {
       )}
       {txHash && !loading && (
         <p className="text-xs text-gray-400 mb-3">
-          Stake tx:{' '}
+          Deposit tx:{' '}
           <a
             href={`https://explorer.hiro.so/txid/${txHash}?chain=testnet`}
             target="_blank"
@@ -166,7 +167,7 @@ export default function StakePanel({ marketId, onStaked }: {
       </button>
 
       <p className="text-gray-600 text-xs text-center mt-4">
-        Staked on-chain · AI resolves · Winners paid automatically
+        Deposited into agent vault · AI resolves · Winners paid via FlowVault
       </p>
     </div>
   )

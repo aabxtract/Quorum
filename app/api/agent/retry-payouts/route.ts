@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPool } from '@/lib/db'
-import { payoutWinnerOnChain } from '@/lib/quorum-agent'
+import { payoutWinner } from '@/lib/flowvault-agent'
+import { markPaidOutOnChain } from '@/lib/quorum-agent'
 import { sendTelegramMessage } from '@/lib/telegram'
 
 export const dynamic = 'force-dynamic'
@@ -78,11 +79,19 @@ async function handle(req: NextRequest) {
     const payout = parseFloat(stake.payout_amount)
     const side   = stake.side as 'yes' | 'no'
     try {
-      const txId = await payoutWinnerOnChain(stake.market_id, stake.wallet_address, payout, side)
+      const txId = await payoutWinner(stake.wallet_address, payout)
       await getPool().query(
         `UPDATE stakes SET payout_tx_hash = $1 WHERE id = $2`,
         [txId, stake.id]
       )
+
+      // Record on-chain that this winner was paid
+      try {
+        await markPaidOutOnChain(stake.market_id, stake.wallet_address)
+      } catch (chainErr: any) {
+        console.error(`[retry] mark-paid-out failed for stake ${stake.id}:`, chainErr?.message)
+      }
+
       results.push({ stakeId: stake.id, wallet: stake.wallet_address, payout, txId })
       succeeded++
     } catch (err: any) {

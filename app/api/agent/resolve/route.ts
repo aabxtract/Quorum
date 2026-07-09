@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPool } from '@/lib/db'
 import { getPrice } from '@/lib/price'
 import { getAgentReasoning } from '@/lib/groq'
-import { resolveMarketOnChain, payoutWinnerOnChain } from '@/lib/quorum-agent'
+import { resolveMarketOnChain, markPaidOutOnChain } from '@/lib/quorum-agent'
+import { payoutWinner, getAgentVault } from '@/lib/flowvault-agent'
 import { sendTelegramMessage } from '@/lib/telegram'
 
 export const dynamic = 'force-dynamic'
@@ -30,10 +31,7 @@ export async function POST(req: NextRequest) {
 
   for (const market of markets) {
     try {
-      await getPool().query(
-        `UPDATE markets SET status = 'resolving' WHERE id = $1`,
-        [market.id]
-      )
+      await getPool().query(`UPDATE markets SET status = 'resolving' WHERE id = $1`, [market.id])
 
       const currentPrice = await getPrice(market.symbol)
 
@@ -62,19 +60,18 @@ export async function POST(req: NextRequest) {
         [market.id, `RESOLVED_${winningSide.toUpperCase()}`, currentPrice, reasoning]
       )
 
-      // ── On-chain resolution (optional — don't block DB/Telegram if contract not deployed) ──
+      // ── On-chain registry: mark resolved ──────────────────────────────────────
       let resolveTxHash: string | null = null
-      if (totalPool > 0) {
-        try {
-          resolveTxHash = await resolveMarketOnChain(market.id, winningSide, currentPrice)
-        } catch (chainErr: any) {
-          console.error(`[resolve] on-chain resolve-market failed for ${market.id}:`, chainErr?.message)
-        }
+      try {
+        resolveTxHash = await resolveMarketOnChain(market.id, winningSide, currentPrice)
+      } catch (chainErr: any) {
+        console.error(`[resolve] on-chain registry failed for ${market.id}:`, chainErr?.message)
       }
 
-      // ── Payout each winner (also optional per-stake) ──────────────────────────
+      // ── FlowVault: pay winners from agent vault ────────────────────────────────
       const payoutTxs: { stakeId: string; txId: string; amount: number }[] = []
-      if (winnerPool > 0 && resolveTxHash) {
+
+      if (totalPool > 0 && winnerPool > 0) {
         const { rows: winnerStakes } = await getPool().query(
           `SELECT id, wallet_address, amount FROM stakes WHERE market_id = $1 AND side = $2`,
           [market.id, winningSide]
@@ -82,42 +79,40 @@ export async function POST(req: NextRequest) {
 
         for (const stake of winnerStakes) {
           const stakeAmount = parseFloat(stake.amount)
-          const profit  = loserPool > 0 ? (stakeAmount / winnerPool) * (loserPool * 0.95) : 0
-          const payout  = stakeAmount + profit
+          const profit = loserPool > 0 ? (stakeAmount / winnerPool) * (loserPool * 0.95) : 0
+          const payout = stakeAmount + profit
 
           try {
-            const txId = await payoutWinnerOnChain(market.id, stake.wallet_address, payout, winningSide)
+            // FlowVault routing: agent vault → winner wallet
+            const txId = await payoutWinner(stake.wallet_address, payout)
             payoutTxs.push({ stakeId: stake.id, txId, amount: payout })
             await getPool().query(
               `UPDATE stakes SET payout_amount = $1, payout_tx_hash = $2 WHERE id = $3`,
               [payout, txId, stake.id]
             )
+
+            // Record on-chain that this winner was paid
+            try {
+              await markPaidOutOnChain(market.id, stake.wallet_address)
+            } catch (chainErr: any) {
+              console.error(`[resolve] mark-paid-out failed for stake ${stake.id}:`, chainErr?.message)
+            }
           } catch (payoutErr: any) {
-            console.error(`[resolve] payout failed for stake ${stake.id}:`, payoutErr?.message)
-            // Still record the calculated amount so retry-payouts can pick it up
+            console.error(`[resolve] FlowVault payout failed for stake ${stake.id}:`, payoutErr?.message)
             await getPool().query(
               `UPDATE stakes SET payout_amount = $1 WHERE id = $2`,
               [payout, stake.id]
             )
           }
         }
-      } else if (winnerPool > 0 && !resolveTxHash) {
-        // Contract not deployed yet — calculate and store payouts for later retry
-        const { rows: winnerStakes } = await getPool().query(
-          `SELECT id, wallet_address, amount FROM stakes WHERE market_id = $1 AND side = $2`,
-          [market.id, winningSide]
-        )
-        for (const stake of winnerStakes) {
-          const stakeAmount = parseFloat(stake.amount)
-          const profit  = loserPool > 0 ? (stakeAmount / winnerPool) * (loserPool * 0.95) : 0
-          await getPool().query(
-            `UPDATE stakes SET payout_amount = $1 WHERE id = $2`,
-            [stakeAmount + profit, stake.id]
-          )
-        }
+
+        // Final cleanup of any remaining routing rules
+        try { await getAgentVault().clearRoutingRules() } catch {}
+      } else if (totalPool > 0 && winnerPool === 0) {
+        // Everyone on losing side — nothing to pay out, fee stays in vault
       }
 
-      // ── Always persist resolution to DB ──────────────────────────────────────
+      // ── Always persist to DB ───────────────────────────────────────────────────
       await getPool().query(
         `UPDATE markets SET
            status = 'resolved',
@@ -129,10 +124,10 @@ export async function POST(req: NextRequest) {
         [winningSide, currentPrice, reasoning, resolveTxHash, market.id]
       )
 
-      // ── Always notify Telegram ────────────────────────────────────────────────
+      // ── Always notify Telegram ─────────────────────────────────────────────────
       const explorerLink = resolveTxHash
         ? `[View Tx](https://explorer.hiro.so/txid/${resolveTxHash}?chain=testnet)`
-        : '_Contract not yet deployed — payouts queued for on-chain retry_'
+        : '_Registry tx pending_'
 
       await sendTelegramMessage(
         `🏆 *MARKET RESOLVED*\n\n` +

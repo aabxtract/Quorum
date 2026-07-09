@@ -1,0 +1,6 @@
+[network]
+name = "testnet"
+deployment_fee_rate = 10
+
+[accounts.deployer]
+mnemonic = "pig gasp slogan doctor useless walnut struggle catalog wonder cliff wisdom patient naive enable symbol umbrella sweet civil produce clinic design crew glare muscle"
