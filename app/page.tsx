@@ -41,26 +41,36 @@ export default function Home() {
   return (
     <div className="relative min-h-screen bg-[#0A0A0B] overflow-hidden selection:bg-quorum-500/30 selection:text-white">
 
-      {/* ─── AURORA LIGHT BEAMS ──────────────────────────────────────────── */}
-      <div className="absolute top-0 inset-x-0 h-[700px] pointer-events-none overflow-hidden">
-
-        {/* Left cluster — cyan/teal beams */}
-        <div className="absolute top-0 left-[12%] w-[2px] h-full bg-gradient-to-b from-quorum-500/60 via-quorum-500/20 to-transparent blur-[1px]" />
-        <div className="absolute top-0 left-[15%] w-[80px] h-[85%] bg-gradient-to-b from-quorum-500/25 via-quorum-500/8 to-transparent blur-[40px]" />
-        <div className="absolute top-0 left-[18%] w-[1px] h-[70%] bg-gradient-to-b from-quorum-500/40 via-quorum-500/10 to-transparent blur-[0.5px]" />
-        <div className="absolute top-0 left-[20%] w-[120px] h-full bg-gradient-to-b from-quorum-500/15 via-quorum-500/5 to-transparent blur-[60px]" />
-
-        {/* Right cluster — orange/red beams */}
-        <div className="absolute top-0 right-[12%] w-[2px] h-full bg-gradient-to-b from-orange-500/60 via-orange-500/20 to-transparent blur-[1px]" />
-        <div className="absolute top-0 right-[15%] w-[80px] h-[85%] bg-gradient-to-b from-orange-500/25 via-orange-500/8 to-transparent blur-[40px]" />
-        <div className="absolute top-0 right-[18%] w-[1px] h-[70%] bg-gradient-to-b from-orange-500/40 via-orange-500/10 to-transparent blur-[0.5px]" />
-        <div className="absolute top-0 right-[20%] w-[120px] h-full bg-gradient-to-b from-orange-500/15 via-orange-500/5 to-transparent blur-[60px]" />
-
-        {/* Centre glow pool at top */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-quorum-500/[0.06] blur-[100px] rounded-full" />
-
-        {/* Hard floor fade */}
-        <div className="absolute bottom-0 left-0 right-0 h-[200px] bg-gradient-to-t from-[#0A0A0B] to-transparent" />
+      {/* ─── AURORA BACKDROP ─────────────────────────────────────────────
+           Two large soft blobs anchored to the upper corners — teal left,
+           orange right — matching the JC Trader aurora reference.          */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {/* Teal blob — upper left corner, bleeds in from outside viewport */}
+        <div
+          className="absolute rounded-full"
+          style={{
+            width: 700,
+            height: 700,
+            top: -200,
+            left: -180,
+            background: 'radial-gradient(circle, rgba(12,242,196,0.45) 0%, rgba(12,242,196,0.18) 40%, transparent 70%)',
+            filter: 'blur(60px)',
+          }}
+        />
+        {/* Orange blob — upper right corner */}
+        <div
+          className="absolute rounded-full"
+          style={{
+            width: 700,
+            height: 700,
+            top: -200,
+            right: -180,
+            background: 'radial-gradient(circle, rgba(249,115,22,0.45) 0%, rgba(249,115,22,0.18) 40%, transparent 70%)',
+            filter: 'blur(60px)',
+          }}
+        />
+        {/* Floor fade — stops the glow bleeding into page sections below */}
+        <div className="absolute inset-x-0 bottom-0 h-[45%] bg-gradient-to-t from-[#0A0A0B] via-[#0A0A0B]/80 to-transparent" />
       </div>
 
       <div className="max-w-7xl mx-auto px-6 lg:px-8 pt-44 pb-24 relative z-10">

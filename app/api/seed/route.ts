@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
     const userIds: string[] = []
     for (const u of demoUsers) {
       const { rows } = await client.query(
-        `INSERT INTO users (email, password_hash, display_name)
-         VALUES ($1, $2, $3)
+        `INSERT INTO users (email, password_hash, display_name, auth_method)
+         VALUES ($1, $2, $3, 'email')
          ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name
          RETURNING id`,
         [u.email, passwordHash, u.display_name]
