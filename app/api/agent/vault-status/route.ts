@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { agentVault, fromMicro } from '@/lib/flowvault-agent'
 
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 // Health-check for the operator wallet + vault. Hit this before demos to make
 // sure the agent side of settlement is actually funded and reachable.
 export async function GET() {

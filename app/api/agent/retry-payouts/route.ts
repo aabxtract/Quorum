@@ -3,6 +3,9 @@ import { getPool } from '@/lib/db'
 import { payoutWinner, agentVault } from '@/lib/flowvault-agent'
 import { sendTelegramMessage } from '@/lib/telegram'
 
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 // Sweep for winning stakes that were calculated during resolve() but whose
 // on-chain payout tx never landed (e.g. agent wallet ran out of USDCx, RPC
 // blip, contract error). Rerun payoutWinner for each and record the tx hash.

@@ -9,6 +9,9 @@ import {
 } from '@/lib/flowvault-agent'
 import { sendTelegramMessage } from '@/lib/telegram'
 
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 export async function POST(req: NextRequest) {
   const auth = req.headers.get('authorization')
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
