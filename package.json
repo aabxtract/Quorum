@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@stacks/connect": "^7.10.2",
-    "@stacks/connect-react": "^23.1.6",
     "@stacks/network": "^6.16.0",
     "@stacks/transactions": "^6.16.0",
     "@types/bcryptjs": "^2.4.6",
