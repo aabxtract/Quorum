@@ -42,10 +42,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const connectWallet = useCallback(async () => {
-    const { AppConfig, UserSession, showConnect, getStacksProvider } = await import('@stacks/connect')
+    const { AppConfig, UserSession, showConnect } = await import('@stacks/connect')
     const appConfig = new AppConfig(['store_write', 'publish_data'])
     const userSession = new UserSession({ appConfig })
-    const provider = getStacksProvider()
+    const provider = (window as any).LeatherProvider ?? (window as any).StacksProvider
 
     return new Promise<void>((resolve) => {
       showConnect({

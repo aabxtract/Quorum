@@ -19,7 +19,7 @@ export function createBrowserVault(senderAddress: string) {
     senderAddress,
     contractCallExecutor: async (call: any) => {
       const { openContractCall, getStacksProvider } = await import('@stacks/connect')
-      const provider = getStacksProvider()
+      const provider = (window as any).LeatherProvider ?? getStacksProvider()
       if (!provider) {
         throw new Error('No Stacks wallet found. Please install Leather Wallet.')
       }
