@@ -15,8 +15,8 @@ export default function HistoryPage() {
   return (
     <div className="pt-24 pb-20 px-6 max-w-7xl mx-auto min-h-screen">
       <div className="mb-10">
-        <h1 className="text-4xl font-black font-heading mb-2">Settlement History</h1>
-        <p className="text-gray-400">Verifiable, on-chain record of every AI resolution and FlowVault payout.</p>
+        <h1 className="text-4xl font-black font-heading mb-2">Resolved Markets</h1>
+        <p className="text-gray-400">Every outcome, verified on-chain. The AI called it — FlowVault paid it out.</p>
       </div>
 
       {resolvedMarkets.length === 0 ? (

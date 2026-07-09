@@ -2,7 +2,6 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import WalletConnect from '@/components/WalletConnect'
 
 interface AuthUser {
   id: string
@@ -89,9 +88,6 @@ export default function Nav() {
 
           {/* Right Actions */}
           <div className="hidden sm:flex items-center gap-2 flex-shrink-0 ml-auto">
-            {/* Hiro wallet — compact */}
-            <WalletConnect />
-
             {/* Auth section */}
             {authLoaded && (
               <>
@@ -159,7 +155,6 @@ export default function Nav() {
             </Link>
           ))}
           <div className="flex flex-col gap-3 mt-4 w-64">
-            <WalletConnect />
             {user ? (
               <>
                 <Link

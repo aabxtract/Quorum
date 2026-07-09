@@ -194,7 +194,7 @@ export default function AccountPage() {
                 </p>
               ) : (
                 <div>
-                  <p className="text-gray-500 text-sm mb-2">Not linked — required to stake</p>
+                  <p className="text-gray-500 text-sm mb-2">No wallet linked — you need one to stake</p>
                   <button
                     onClick={linkWallet}
                     disabled={linkingWallet}
@@ -232,12 +232,13 @@ export default function AccountPage() {
           <h2 className="text-xl font-bold text-white mb-4">Stake History</h2>
           {stakes.length === 0 ? (
             <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-16 text-center">
-              <p className="text-gray-500 mb-4">No stakes yet.</p>
+              <p className="text-gray-500 mb-2">You haven&apos;t staked on any markets yet.</p>
+              <p className="text-gray-600 text-sm mb-6">Find an open market and take your first position.</p>
               <Link
                 href="/markets"
                 className="inline-block px-6 py-3 bg-[#4F6EF7] hover:bg-[#6B86F8] text-white font-semibold rounded-xl text-sm transition-all"
               >
-                Browse Markets
+                View Open Markets
               </Link>
             </div>
           ) : (

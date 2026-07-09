@@ -4,6 +4,7 @@
   "private": true,
   "description": "Syndicate — AI-Operated Copy Trading with Trust-Enforced Settlement on Stacks",
   "scripts": {
+    "seed": "node scripts/seed.js",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

@@ -33,7 +33,7 @@ export default function AuthPage() {
               QUORUM<span className="text-[#4F6EF7]">.</span>
             </span>
           </Link>
-          <p className="text-gray-500 text-sm mt-2">AI-resolved prediction markets</p>
+          <p className="text-gray-500 text-sm mt-2">Predict prices. Win on-chain. No middlemen.</p>
         </div>
 
         {/* Card */}

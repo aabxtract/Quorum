@@ -77,8 +77,8 @@ export default function CreateMarketPage() {
     return (
       <div className="pt-32 pb-20 px-6 max-w-xl mx-auto min-h-screen">
         <div className="bg-[#121214] border border-white/5 rounded-2xl p-10 text-center">
-          <h2 className="text-2xl font-bold mb-4">Connect Wallet to Create Market</h2>
-          <p className="text-gray-400 text-sm">Use the Connect Wallet button in the navigation bar.</p>
+          <h2 className="text-2xl font-bold mb-4">Wallet Required</h2>
+          <p className="text-gray-400 text-sm">Connect your Hiro Wallet using the button in the top nav to create a market.</p>
         </div>
       </div>
     )
@@ -87,8 +87,8 @@ export default function CreateMarketPage() {
   return (
     <div className="pt-24 pb-20 px-6 max-w-2xl mx-auto min-h-screen">
       <div className="mb-10">
-        <h1 className="text-4xl font-black mb-2">Create Flash Market</h1>
-        <p className="text-gray-400">Define an outcome. The agent resolves it automatically.</p>
+        <h1 className="text-4xl font-black mb-2">Create a Market</h1>
+        <p className="text-gray-400">Set the asset, target price, and deadline. The AI handles resolution — automatically.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-[#121214] border border-white/5 rounded-2xl p-8 space-y-6">
