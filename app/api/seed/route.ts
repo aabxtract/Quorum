@@ -24,24 +24,25 @@ export async function POST(req: NextRequest) {
     const passwordHash = await bcrypt.hash('demo1234', 10)
 
     const demoUsers = [
-      { email: 'alice@quorum.demo', display_name: 'Alice' },
-      { email: 'bob@quorum.demo',   display_name: 'Bob'   },
-      { email: 'carol@quorum.demo', display_name: 'Carol' },
+      { email: 'alice@quorum.demo', display_name: 'Alice', wallet: 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM' },
+      { email: 'bob@quorum.demo',   display_name: 'Bob',   wallet: 'ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG' },
+      { email: 'carol@quorum.demo', display_name: 'Carol', wallet: 'ST2JHG361ZXG51QTKY2NQCVBPPRRE2KZB1HR05NNC' },
     ]
 
-    const userIds: string[] = []
+    const users: { id: string; wallet: string }[] = []
     for (const u of demoUsers) {
       const { rows } = await client.query(
-        `INSERT INTO users (email, password_hash, display_name, auth_method)
-         VALUES ($1, $2, $3, 'email')
-         ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name
+        `INSERT INTO users (email, password_hash, display_name, auth_method, wallet_address)
+         VALUES ($1, $2, $3, 'email', $4)
+         ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name, wallet_address = EXCLUDED.wallet_address
          RETURNING id`,
-        [u.email, passwordHash, u.display_name]
+        [u.email, passwordHash, u.display_name, u.wallet]
       )
-      userIds.push(rows[0].id)
+      users.push({ id: rows[0].id, wallet: u.wallet })
     }
 
-    const [aliceId, bobId, carolId] = userIds
+    const [alice, bob, carol] = users
+    const [aliceId, bobId, carolId] = [alice.id, bob.id, carol.id]
 
     const openMarkets = [
       { question: 'Will BTC be above $62,000 in 5 minutes?',  symbol: 'BTCUSDT', direction: 'above', target_value: 62000, resolves_at: mins(5),  created_by: aliceId },
@@ -95,21 +96,21 @@ export async function POST(req: NextRequest) {
 
     // Stakes on open markets
     const openStakes = [
-      { market_id: openMarketIds[0], user_id: aliceId, side: 'yes', amount: 5.00 },
-      { market_id: openMarketIds[0], user_id: bobId,   side: 'no',  amount: 3.00 },
-      { market_id: openMarketIds[0], user_id: carolId, side: 'yes', amount: 2.00 },
-      { market_id: openMarketIds[1], user_id: bobId,   side: 'yes', amount: 4.00 },
-      { market_id: openMarketIds[1], user_id: carolId, side: 'no',  amount: 6.00 },
-      { market_id: openMarketIds[2], user_id: aliceId, side: 'no',  amount: 8.00 },
-      { market_id: openMarketIds[2], user_id: bobId,   side: 'yes', amount: 4.00 },
-      { market_id: openMarketIds[3], user_id: carolId, side: 'yes', amount: 10.00 },
-      { market_id: openMarketIds[3], user_id: aliceId, side: 'no',  amount: 7.00 },
+      { market_id: openMarketIds[0], wallet_address: alice.wallet, side: 'yes', amount: 5.00 },
+      { market_id: openMarketIds[0], wallet_address: bob.wallet,   side: 'no',  amount: 3.00 },
+      { market_id: openMarketIds[0], wallet_address: carol.wallet, side: 'yes', amount: 2.00 },
+      { market_id: openMarketIds[1], wallet_address: bob.wallet,   side: 'yes', amount: 4.00 },
+      { market_id: openMarketIds[1], wallet_address: carol.wallet, side: 'no',  amount: 6.00 },
+      { market_id: openMarketIds[2], wallet_address: alice.wallet, side: 'no',  amount: 8.00 },
+      { market_id: openMarketIds[2], wallet_address: bob.wallet,   side: 'yes', amount: 4.00 },
+      { market_id: openMarketIds[3], wallet_address: carol.wallet, side: 'yes', amount: 10.00 },
+      { market_id: openMarketIds[3], wallet_address: alice.wallet, side: 'no',  amount: 7.00 },
     ]
 
     for (const s of openStakes) {
       await client.query(
-        `INSERT INTO stakes (market_id, user_id, side, amount) VALUES ($1, $2, $3, $4)`,
-        [s.market_id, s.user_id, s.side, s.amount]
+        `INSERT INTO stakes (market_id, wallet_address, side, amount) VALUES ($1, $2, $3, $4)`,
+        [s.market_id, s.wallet_address, s.side, s.amount]
       )
     }
 
@@ -125,14 +126,14 @@ export async function POST(req: NextRequest) {
 
     // Stakes on resolved markets (with payouts)
     await client.query(
-      `INSERT INTO stakes (market_id, user_id, side, amount, payout_amount)
+      `INSERT INTO stakes (market_id, wallet_address, side, amount, payout_amount)
        VALUES ($1, $2, 'yes', 10, 14.25), ($1, $3, 'no', 10, 0)`,
-      [resolvedMarketIds[0], aliceId, bobId]
+      [resolvedMarketIds[0], alice.wallet, bob.wallet]
     )
     await client.query(
-      `INSERT INTO stakes (market_id, user_id, side, amount, payout_amount)
+      `INSERT INTO stakes (market_id, wallet_address, side, amount, payout_amount)
        VALUES ($1, $2, 'yes', 15, 23.75), ($1, $3, 'no', 5, 0)`,
-      [resolvedMarketIds[1], carolId, aliceId]
+      [resolvedMarketIds[1], carol.wallet, alice.wallet]
     )
 
     await client.query('COMMIT')

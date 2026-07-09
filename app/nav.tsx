@@ -54,21 +54,19 @@ export default function Nav() {
       <nav
         className={`fixed top-0 w-full z-50 transition-all duration-300 ${
           isScrolled
-            ? 'bg-[#0A0A0B]/80 backdrop-blur-xl border-b border-white/5 py-4'
+            ? 'bg-[#0A0A0B]/80 backdrop-blur-xl py-4'
             : 'bg-transparent py-6'
         }`}
       >
-        <div className="max-w-7xl mx-auto px-6 lg:px-8 flex items-center gap-4">
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8 flex items-center gap-4">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 group flex-shrink-0">
+          <Link href="/" className="relative z-20 flex items-center gap-2 group flex-shrink-0">
             <span className="font-heading font-black text-white text-xl tracking-tighter uppercase transition-opacity group-hover:opacity-80">
               QUORUM<span className="text-quorum-500">.</span>
             </span>
           </Link>
-
-          {/* Centered Pill Links (Desktop) */}
-          <div className="hidden md:flex items-center justify-center flex-1">
-            <div className="flex items-center gap-6 bg-white/[0.03] border border-white/10 rounded-full px-6 py-2.5 backdrop-blur-md">
+          <div className="hidden md:flex absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+            <div className="flex items-center gap-6 bg-white/[0.03] border border-white/10 rounded-full px-6 py-2.5 backdrop-blur-md whitespace-nowrap">
               {navLinks.map((l) => {
                 const isActive = pathname === l.href || (l.href !== '/' && pathname.startsWith(l.href) && !l.href.includes('#'))
                 return (
@@ -87,7 +85,7 @@ export default function Nav() {
           </div>
 
           {/* Right Actions */}
-          <div className="hidden sm:flex items-center gap-2 flex-shrink-0 ml-auto">
+          <div className="hidden sm:flex items-center gap-2 flex-shrink-0 ml-auto relative z-20">
             {/* Auth section */}
             {authLoaded && (
               <>
