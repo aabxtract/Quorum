@@ -108,12 +108,6 @@ export default function Nav() {
                         {user.display_name || user.email.split('@')[0]}
                       </span>
                     </Link>
-                    <button
-                      onClick={handleLogout}
-                      className="text-xs text-gray-500 hover:text-red-400 transition-colors px-1"
-                    >
-                      Out
-                    </button>
                     <Link
                       href="/create"
                       className="px-4 py-1.5 bg-quorum-500 hover:bg-quorum-400 text-[#0A0A0B] font-bold rounded-lg text-sm transition-all whitespace-nowrap"

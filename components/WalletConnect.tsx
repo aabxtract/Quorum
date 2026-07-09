@@ -16,13 +16,6 @@ export default function WalletConnect() {
       <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.04] border border-white/10 rounded-lg">
         <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
         <span className="text-sm font-mono text-gray-300">{truncated}</span>
-        <button
-          onClick={disconnectWallet}
-          className="text-xs text-gray-500 hover:text-red-400 transition-colors ml-1"
-          title="Disconnect wallet"
-        >
-          ✕
-        </button>
       </div>
     )
   }
