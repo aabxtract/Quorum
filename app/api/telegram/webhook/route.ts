@@ -3,6 +3,7 @@ import { getPool } from '@/lib/db'
 import { sendTelegramMessage } from '@/lib/telegram'
 
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 // Register once after deploy:
 // https://api.telegram.org/bot{TOKEN}/setWebhook?url=https://<host>/api/telegram/webhook
