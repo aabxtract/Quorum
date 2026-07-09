@@ -3,7 +3,7 @@ import { beforeAll } from 'vitest'
 import '../node_modules/@hirosystems/clarinet-sdk/vitest-helpers/src/clarityValuesMatchers'
 
 beforeAll(() => {
-  globalThis.options = {
+  ;(globalThis as any).options = {
     clarinet: {
       manifestPath: './Clarinet.toml',
       initBeforeEach: true,
