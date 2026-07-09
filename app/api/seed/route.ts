@@ -5,6 +5,59 @@ import bcrypt from 'bcryptjs'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
+// DELETE — wipe all seed demo data (users + their markets + stakes)
+export async function DELETE(req: NextRequest) {
+  const auth = req.headers.get('authorization')
+  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const pool = getPool()
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const demoEmails = ['alice@quorum.demo', 'bob@quorum.demo', 'carol@quorum.demo']
+
+    // Get demo user IDs
+    const { rows: users } = await client.query(
+      `SELECT id FROM users WHERE email = ANY($1)`,
+      [demoEmails]
+    )
+    const userIds = users.map((u: any) => u.id)
+
+    if (userIds.length > 0) {
+      // Delete stakes on their markets
+      await client.query(
+        `DELETE FROM stakes WHERE market_id IN (
+           SELECT id FROM markets WHERE created_by = ANY($1)
+         )`,
+        [userIds]
+      )
+      // Delete their markets
+      const { rowCount: mDel } = await client.query(
+        `DELETE FROM markets WHERE created_by = ANY($1)`,
+        [userIds]
+      )
+      // Delete the demo users
+      const { rowCount: uDel } = await client.query(
+        `DELETE FROM users WHERE email = ANY($1)`,
+        [demoEmails]
+      )
+      await client.query('COMMIT')
+      return NextResponse.json({ ok: true, users_deleted: uDel, markets_deleted: mDel })
+    }
+
+    await client.query('COMMIT')
+    return NextResponse.json({ ok: true, message: 'No seed users found — nothing to delete' })
+  } catch (err: any) {
+    await client.query('ROLLBACK')
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  } finally {
+    client.release()
+  }
+}
+
 export async function POST(req: NextRequest) {
   const auth = req.headers.get('authorization')
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {

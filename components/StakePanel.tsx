@@ -1,11 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useWallet } from '@/lib/wallet-context'
-import { createBrowserVault } from '@/lib/flowvault-browser'
-
-// Inline — avoids pulling in the server-only flowvault-agent module
-const toMicro = (amount: number): string =>
-  BigInt(Math.floor(amount * 1_000_000)).toString()
+import { stakeOnChain } from '@/lib/quorum-browser'
 
 export default function StakePanel({ marketId, onStaked }: {
   marketId: string
@@ -21,7 +17,6 @@ export default function StakePanel({ marketId, onStaked }: {
 
   async function handleStake() {
     if (!walletAddress) {
-      // Trigger wallet connect inline then let user re-click
       await connectWallet()
       return
     }
@@ -33,13 +28,15 @@ export default function StakePanel({ marketId, onStaked }: {
     setTxHash(null)
 
     try {
-      // 1. Escrow USDCx on-chain via FlowVault — opens Hiro wallet popup
+      // 1. Call stake() on the Quorum contract — opens Hiro wallet popup
       setStatus('Requesting wallet signature…')
-      const vault = createBrowserVault(walletAddress)
-      const result = await vault.deposit(toMicro(amt))
-      const depositTxId: string | undefined = (result as any)?.txId || (result as any)?.txid
-      if (!depositTxId) throw new Error('Wallet did not return a tx id')
-      setTxHash(depositTxId)
+      const { txId } = await stakeOnChain({
+        marketId,
+        side,
+        amountUsdcx: amt,
+        senderAddress: walletAddress,
+      })
+      setTxHash(txId)
 
       // 2. Record the stake in Postgres with the on-chain tx hash
       setStatus('Recording stake…')
@@ -51,7 +48,7 @@ export default function StakePanel({ marketId, onStaked }: {
           walletAddress,
           side,
           amount: amt,
-          txHash: depositTxId,
+          txHash: txId,
         }),
       })
 
@@ -73,7 +70,6 @@ export default function StakePanel({ marketId, onStaked }: {
     }
   }
 
-  // Still checking localStorage — show skeleton to prevent flash
   if (walletLoading) {
     return (
       <div className="bg-[#121214] border border-white/5 rounded-2xl p-6 space-y-4 animate-pulse">
@@ -88,7 +84,6 @@ export default function StakePanel({ marketId, onStaked }: {
     )
   }
 
-  // Wallet not connected — show connect prompt
   if (!walletAddress) {
     return (
       <div className="bg-[#121214] border border-white/5 rounded-2xl p-6 text-center space-y-4">
@@ -150,7 +145,7 @@ export default function StakePanel({ marketId, onStaked }: {
       )}
       {txHash && !loading && (
         <p className="text-xs text-gray-400 mb-3">
-          Deposit tx:{' '}
+          Stake tx:{' '}
           <a
             href={`https://explorer.hiro.so/txid/${txHash}?chain=testnet`}
             target="_blank"
@@ -171,7 +166,7 @@ export default function StakePanel({ marketId, onStaked }: {
       </button>
 
       <p className="text-gray-600 text-xs text-center mt-4">
-        Escrowed in FlowVault · Winners auto-settled on resolution
+        Staked on-chain · AI resolves · Winners paid automatically
       </p>
     </div>
   )

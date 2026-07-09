@@ -1,0 +1,18 @@
+[project]
+name = "quorum"
+description = "Quorum prediction market — Stacks testnet"
+authors = []
+telemetry = false
+cache_dir = "./.cache"
+
+[contracts.quorum-market]
+path = "contracts/quorum-market.clar"
+clarity_version = 1
+epoch = "2.1"
+
+[repl.costs]
+write_length = 100000
+write_count  = 100000
+read_length  = 100000
+read_count   = 100000
+runtime      = 100000000

@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPool } from '@/lib/db'
-import { payoutWinner, agentVault } from '@/lib/flowvault-agent'
+import { payoutWinnerOnChain } from '@/lib/quorum-agent'
 import { sendTelegramMessage } from '@/lib/telegram'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-// Sweep for winning stakes that were calculated during resolve() but whose
-// on-chain payout tx never landed (e.g. agent wallet ran out of USDCx, RPC
-// blip, contract error). Rerun payoutWinner for each and record the tx hash.
+// Retry winning stakes that have a calculated payout_amount but no on-chain
+// payout_tx_hash (e.g. the original payout tx failed or the agent was down).
 //
-// Auth: CRON_SECRET bearer, same as /api/agent/resolve.
+// Auth: Authorization: Bearer CRON_SECRET
 // Query params:
-//   ?dry=1         — list what would be retried, don't touch chain
-//   ?marketId=UUID — restrict to a single market
-//   ?limit=N       — cap number of payouts per call (default 20)
+//   ?dry=1         — preview without hitting the chain
+//   ?marketId=UUID — restrict to one market
+//   ?limit=N       — cap per call (default 20)
+
 async function handle(req: NextRequest) {
   const auth = req.headers.get('authorization')
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -22,12 +22,10 @@ async function handle(req: NextRequest) {
   }
 
   const url = new URL(req.url)
-  const dry = url.searchParams.get('dry') === '1'
+  const dry      = url.searchParams.get('dry') === '1'
   const marketId = url.searchParams.get('marketId')
-  const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '20', 10) || 20))
+  const limit    = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '20', 10) || 20))
 
-  // Stakes that resolved on the winning side, have a calculated payout,
-  // but no on-chain tx hash yet.
   const params: any[] = [limit]
   let where = `m.status = 'resolved'
                AND s.side = m.winning_side
@@ -40,8 +38,7 @@ async function handle(req: NextRequest) {
   }
 
   const { rows: pending } = await getPool().query(
-    `SELECT s.id, s.market_id, s.wallet_address, s.side, s.amount,
-            s.payout_amount, m.question
+    `SELECT s.id, s.market_id, s.wallet_address, s.side, s.payout_amount, m.question
        FROM stakes s
        JOIN markets m ON s.market_id = m.id
       WHERE ${where}
@@ -79,8 +76,9 @@ async function handle(req: NextRequest) {
 
   for (const stake of pending) {
     const payout = parseFloat(stake.payout_amount)
+    const side   = stake.side as 'yes' | 'no'
     try {
-      const txId = await payoutWinner(stake.wallet_address, payout)
+      const txId = await payoutWinnerOnChain(stake.market_id, stake.wallet_address, payout, side)
       await getPool().query(
         `UPDATE stakes SET payout_tx_hash = $1 WHERE id = $2`,
         [txId, stake.id]
@@ -98,14 +96,6 @@ async function handle(req: NextRequest) {
     }
   }
 
-  // Clear routing rules once at the end so the vault returns to hold-only.
-  try {
-    await agentVault.clearRoutingRules()
-  } catch (e) {
-    console.error('[retry-payouts] failed to clear routing rules:', e)
-  }
-
-  // Notify if we actually pushed anything
   if (succeeded > 0) {
     sendTelegramMessage(
       `🔁 *Payout Retry*\n\n` +
@@ -115,13 +105,8 @@ async function handle(req: NextRequest) {
     ).catch(() => {})
   }
 
-  return NextResponse.json({
-    pending: pending.length,
-    succeeded,
-    failed,
-    results,
-  })
+  return NextResponse.json({ pending: pending.length, succeeded, failed, results })
 }
 
-export const GET = handle
+export const GET  = handle
 export const POST = handle

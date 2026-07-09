@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPool } from '@/lib/db'
 import { sendTelegramMessage } from '@/lib/telegram'
+import { createMarketOnChain } from '@/lib/quorum-agent'
 
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 export async function GET(req: NextRequest) {
   try {
     const { rows } = await getPool().query(`
-      SELECT * FROM markets 
+      SELECT * FROM markets
       ORDER BY created_at DESC
     `)
     return NextResponse.json({ markets: rows })
@@ -21,17 +23,14 @@ export async function POST(req: NextRequest) {
   try {
     const { question, symbol, targetValue, direction, marketType, resolvesAt, createdBy } = await req.json()
 
-    // Validate
     if (!question || !symbol || !targetValue || !direction || !resolvesAt) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Validate direction
     if (!['above', 'below'].includes(direction)) {
       return NextResponse.json({ error: 'Direction must be above or below' }, { status: 400 })
     }
 
-    // Validate resolves_at is in the future
     if (new Date(resolvesAt) <= new Date()) {
       return NextResponse.json({ error: 'Resolution time must be in the future' }, { status: 400 })
     }
@@ -43,7 +42,12 @@ export async function POST(req: NextRequest) {
     `, [question, symbol, targetValue, direction, marketType || 'flash', resolvesAt, createdBy])
 
     const created = rows[0]
-    // Fire-and-forget Telegram announcement
+
+    // Register the market on-chain (fire-and-forget; log errors but don't fail the request)
+    createMarketOnChain(created.id).catch((err) => {
+      console.error(`[quorum] create-market on-chain failed for ${created.id}:`, err)
+    })
+
     sendTelegramMessage(
       `🆕 *NEW MARKET*\n\n` +
         `"${created.question}"\n\n` +
