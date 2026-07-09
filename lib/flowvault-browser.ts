@@ -19,30 +19,19 @@ export function createBrowserVault(senderAddress: string) {
     senderAddress,
     contractCallExecutor: async (call: any) => {
       const { openContractCall } = await import('@stacks/connect')
-      const hiroProvider = (window as any).HiroWalletProvider
-      if (!hiroProvider) {
-        throw new Error('Hiro Wallet not detected. Please install the Hiro Wallet extension.')
-      }
-      // Xverse overwrites window.StacksProvider, so save/restore to force Hiro
-      const prevProvider = (window as any).StacksProvider
-      ;(window as any).StacksProvider = hiroProvider
-      try {
-        return await new Promise((resolve, reject) => {
-          openContractCall({
-            contractAddress: call.contractAddress,
-            contractName: call.contractName,
-            functionName: call.functionName,
-            functionArgs: call.functionArgs,
-            network: call.network,
-            postConditionMode: 'allow' as any,
-            postConditions: call.postConditions,
-            onFinish: (data: any) => resolve({ txId: data.txId, status: 'success' } as any),
-            onCancel: () => reject(new Error('User cancelled')),
-          } as any)
-        })
-      } finally {
-        ;(window as any).StacksProvider = prevProvider
-      }
+      return new Promise((resolve, reject) => {
+        openContractCall({
+          contractAddress: call.contractAddress,
+          contractName: call.contractName,
+          functionName: call.functionName,
+          functionArgs: call.functionArgs,
+          network: call.network,
+          postConditionMode: 'allow' as any,
+          postConditions: call.postConditions,
+          onFinish: (data: any) => resolve({ txId: data.txId, status: 'success' } as any),
+          onCancel: () => reject(new Error('User cancelled')),
+        } as any)
+      })
     },
   })
 }
