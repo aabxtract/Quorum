@@ -7,7 +7,7 @@ import {
 } from './flowvault-config'
 import { FlowVault } from 'flowvault-sdk'
 
-const AGENT_WALLET = process.env.NEXT_PUBLIC_STACKS_WALLET_ADDRESS || process.env.STACKS_WALLET_ADDRESS || 'ST2K5BNBN6BSF3S4EQ0EFRMM4MD4JTGKF0PY90E70'
+const AGENT_WALLET = process.env.NEXT_PUBLIC_AGENT_WALLET_ADDRESS || 'ST2K5BNBN6BSF3S4EQ0EFRMM4MD4JTGKF0PY90E70'
 
 export function createBrowserVault(senderAddress: string) {
   return new FlowVault({

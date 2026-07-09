@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useWallet } from '@/lib/wallet-context'
-import { createBrowserVault } from '@/lib/flowvault-browser'
+import { stakeOnMarket } from '@/lib/flowvault-browser'
 
 const toMicro = (amount: number): string =>
   BigInt(Math.floor(amount * 1_000_000)).toString()
@@ -31,12 +31,10 @@ export default function StakePanel({ marketId, onStaked }: {
     setTxHash(null)
 
     try {
-      // 1. Deposit USDCx into the agent's FlowVault vault via Hiro wallet
-      setStatus('Requesting wallet signature…')
-      const vault = createBrowserVault(walletAddress)
-      const result = await vault.deposit(toMicro(amt))
-      const depositTxId: string | undefined = (result as any)?.txId || (result as any)?.txid
-      if (!depositTxId) throw new Error('Wallet did not return a tx id')
+      // 1. Set split routing → deposit → clear (Hiro popups x3)
+      //    The split routes the stake to the agent wallet automatically.
+      setStatus('Requesting wallet signatures (3 approvals)…')
+      const { depositTxId } = await stakeOnMarket(walletAddress, toMicro(amt))
       setTxHash(depositTxId)
 
       // 2. Record the stake in Postgres + trigger on-chain registry update
