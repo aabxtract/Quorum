@@ -2,13 +2,12 @@ import { Pool } from 'pg'
 
 const globalForPg = globalThis as typeof globalThis & { __pgPool?: Pool }
 
-function getOrCreatePool(): Pool {
+export function getPool(): Pool {
   if (!globalForPg.__pgPool) {
-    const dbUrl = process.env.DATABASE_URL
-    if (!dbUrl) {
+    if (!process.env.DATABASE_URL) {
       throw new Error('DATABASE_URL environment variable is not set')
     }
-    const url = new URL(dbUrl)
+    const url = new URL(process.env.DATABASE_URL)
     globalForPg.__pgPool = new Pool({
       host: url.hostname,
       port: parseInt(url.port || '5432'),
@@ -24,12 +23,12 @@ function getOrCreatePool(): Pool {
   return globalForPg.__pgPool
 }
 
-const pool = new Proxy({} as Pool, {
+const _pool = new Proxy({} as Pool, {
   get(_, prop) {
-    const instance = getOrCreatePool()
+    const instance = getPool()
     const val = (instance as any)[prop]
     return typeof val === 'function' ? val.bind(instance) : val
   },
 })
 
-export default pool
+export default _pool
