@@ -15,15 +15,25 @@ export default function MarketDetailPage() {
   const market = data?.market
   const stakes = data?.stakes || []
 
+  const isExpired = market && new Date(market.resolves_at) <= new Date() && market.status !== 'resolved'
+  const isClosed = isExpired || market?.status === 'resolving'
+
+  // Client-side nudge: when a user opens an expired-but-unresolved market,
+  // ping the public nudge endpoint so it doesn't have to wait for the next cron tick.
+  useEffect(() => {
+    if (!isExpired || market?.status === 'resolving') return
+    fetch('/api/agent/nudge', { method: 'POST' }).catch(() => {})
+  }, [isExpired, market?.status])
+
   useEffect(() => {
     if (!market) return
-    const interval = setInterval(() => {
+    const tick = () => {
       const now = new Date()
       const resolves = new Date(market.resolves_at)
       const diff = resolves.getTime() - now.getTime()
 
       if (diff <= 0) {
-        setTimeLeft('Resolving...')
+        setTimeLeft('')
         return
       }
 
@@ -31,7 +41,9 @@ export default function MarketDetailPage() {
       const mins = Math.floor((diff % 3600000) / 60000)
       const secs = Math.floor((diff % 60000) / 1000)
       setTimeLeft(hours > 0 ? `${hours}h ${mins}m ${secs}s` : `${mins}m ${secs}s`)
-    }, 1000)
+    }
+    tick()
+    const interval = setInterval(tick, 1000)
     return () => clearInterval(interval)
   }, [market])
 
@@ -59,9 +71,14 @@ export default function MarketDetailPage() {
               <span className="text-gray-400 text-sm font-mono bg-[#1E1E2E] px-3 py-1 rounded">
                 Pair: {market.symbol}
               </span>
-              {market.status === 'open' && (
+              {market.status === 'open' && !isClosed && timeLeft && (
                 <span className="text-white text-sm font-mono bg-[#1E1E2E] px-3 py-1 rounded ml-auto">
                   Resolves in: {timeLeft}
+                </span>
+              )}
+              {isClosed && market.status !== 'resolved' && (
+                <span className="text-amber-400 text-sm font-mono bg-amber-400/10 border border-amber-400/20 px-3 py-1 rounded ml-auto">
+                  {market.status === 'resolving' ? '⚙️ Agent resolving…' : '🔒 Closed · Awaiting AI'}
                 </span>
               )}
             </div>
@@ -157,12 +174,24 @@ export default function MarketDetailPage() {
         {/* Sidebar */}
         <div className="lg:col-span-1">
           <div className="sticky top-24">
-            {market.status === 'open' ? (
+            {market.status === 'open' && !isClosed ? (
               <StakePanel marketId={market.id} onStaked={() => mutate()} />
-            ) : (
+            ) : market.status === 'resolved' ? (
               <div className="bg-[#13131A] border border-[#1E1E2E] rounded-xl p-6 text-center">
-                <h3 className="text-white font-bold mb-2">Market Closed</h3>
-                <p className="text-gray-400 text-sm">This market has resolved and settlement is complete.</p>
+                <h3 className="text-white font-bold mb-2">Market Resolved</h3>
+                <p className="text-gray-400 text-sm">Settlement complete. Winners have been paid out.</p>
+              </div>
+            ) : (
+              <div className="bg-[#13131A] border border-amber-500/20 rounded-xl p-6 text-center space-y-3">
+                <div className="w-10 h-10 rounded-full bg-amber-400/10 flex items-center justify-center mx-auto text-xl">⚙️</div>
+                <h3 className="text-white font-bold">Awaiting Agent Resolution</h3>
+                <p className="text-gray-400 text-sm">
+                  Time is up. The AI agent will resolve this market automatically within a few minutes.
+                </p>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span className="text-amber-400 text-xs font-mono">Agent checking every 2 min</span>
+                </div>
               </div>
             )}
           </div>

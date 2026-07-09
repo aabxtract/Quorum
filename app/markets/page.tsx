@@ -5,6 +5,8 @@ import { useState } from 'react'
 
 const fetcher = (url: string) => fetch(url).then(res => res.json())
 
+type Filter = 'open' | 'closed' | 'resolved' | 'all'
+
 function PriceTicker({ symbol, label }: { symbol: string; label: string }) {
   const { data, error } = useSWR(
     `/api/price?symbol=${symbol}`,
@@ -32,16 +34,37 @@ function PriceTicker({ symbol, label }: { symbol: string; label: string }) {
   )
 }
 
+function isExpired(market: Market) {
+  return new Date(market.resolves_at) <= new Date() && market.status !== 'resolved'
+}
+
 export default function MarketsPage() {
   const { data, error } = useSWR('/api/markets', fetcher, { refreshInterval: 10000 })
-  const [filter, setFilter] = useState<'all' | 'open' | 'resolved'>('open')
+  const [filter, setFilter] = useState<Filter>('open')
 
-  const markets = data?.markets || []
-  
-  const filteredMarkets = markets.filter((m: Market) => {
+  const markets: Market[] = data?.markets || []
+
+  const counts = {
+    open: markets.filter(m => m.status === 'open' && !isExpired(m)).length,
+    closed: markets.filter(m => isExpired(m)).length,
+    resolved: markets.filter(m => m.status === 'resolved').length,
+    all: markets.length,
+  }
+
+  const filteredMarkets = markets.filter(m => {
     if (filter === 'all') return true
-    return m.status === filter
+    if (filter === 'open') return m.status === 'open' && !isExpired(m)
+    if (filter === 'closed') return isExpired(m)
+    if (filter === 'resolved') return m.status === 'resolved'
+    return true
   })
+
+  const tabs: { key: Filter; label: string }[] = [
+    { key: 'open', label: 'Open' },
+    { key: 'closed', label: 'Closed' },
+    { key: 'resolved', label: 'Resolved' },
+    { key: 'all', label: 'All' },
+  ]
 
   return (
     <div className="pt-24 pb-20 px-6 max-w-7xl mx-auto min-h-screen">
@@ -52,30 +75,24 @@ export default function MarketsPage() {
         </div>
 
         <div className="flex bg-[#13131A] border border-[#1E1E2E] rounded-xl p-1 w-fit">
-          <button 
-            onClick={() => setFilter('open')}
-            className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filter === 'open' ? 'bg-[#4F6EF7] text-white' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            Open
-          </button>
-          <button 
-            onClick={() => setFilter('resolved')}
-            className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filter === 'resolved' ? 'bg-[#4F6EF7] text-white' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            Resolved
-          </button>
-          <button 
-            onClick={() => setFilter('all')}
-            className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filter === 'all' ? 'bg-[#4F6EF7] text-white' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            All
-          </button>
+          {tabs.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setFilter(key)}
+              className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                filter === key ? 'bg-[#4F6EF7] text-white' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              {label}
+              {counts[key] > 0 && (
+                <span className={`text-xs rounded-full px-1.5 py-0.5 font-bold ${
+                  filter === key ? 'bg-white/20 text-white' : 'bg-white/10 text-gray-400'
+                }`}>
+                  {counts[key]}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -87,11 +104,13 @@ export default function MarketsPage() {
       </div>
 
       {error ? (
-        <div className="p-12 text-center bg-[#13131A] rounded-2xl border border-red-500/20 text-red-400">Failed to load markets</div>
+        <div className="p-12 text-center bg-[#13131A] rounded-2xl border border-red-500/20 text-red-400">
+          Failed to load markets
+        </div>
       ) : !data ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3, 4, 5, 6].map(i => (
-            <div key={i} className="h-56 bg-[#13131A] border border-[#1E1E2E] rounded-xl animate-pulse"></div>
+            <div key={i} className="h-56 bg-[#13131A] border border-[#1E1E2E] rounded-xl animate-pulse" />
           ))}
         </div>
       ) : filteredMarkets.length === 0 ? (
