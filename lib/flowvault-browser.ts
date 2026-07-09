@@ -18,7 +18,11 @@ export function createBrowserVault(senderAddress: string) {
     tokenContractName: USDCX_CONTRACT_NAME,
     senderAddress,
     contractCallExecutor: async (call: any) => {
-      const { openContractCall } = await import('@stacks/connect')
+      const { openContractCall, getStacksProvider } = await import('@stacks/connect')
+      const provider = getStacksProvider()
+      if (!provider) {
+        throw new Error('No Stacks wallet found. Please install Leather Wallet.')
+      }
       return new Promise((resolve, reject) => {
         openContractCall({
           contractAddress: call.contractAddress,
@@ -30,7 +34,7 @@ export function createBrowserVault(senderAddress: string) {
           postConditions: call.postConditions,
           onFinish: (data: any) => resolve({ txId: data.txId, status: 'success' } as any),
           onCancel: () => reject(new Error('User cancelled')),
-        } as any)
+        } as any, provider)
       })
     },
   })

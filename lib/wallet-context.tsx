@@ -42,18 +42,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const connectWallet = useCallback(async () => {
-    const { AppConfig, UserSession, showConnect } = await import('@stacks/connect')
+    const { AppConfig, UserSession, showConnect, getStacksProvider } = await import('@stacks/connect')
     const appConfig = new AppConfig(['store_write', 'publish_data'])
     const userSession = new UserSession({ appConfig })
-
-    const hiroProvider =
-      (window as any).HiroWalletProvider ?? (window as any).StacksProvider
+    const provider = getStacksProvider()
 
     return new Promise<void>((resolve) => {
       showConnect({
         appDetails: { name: 'Quorum', icon: '/favicon.ico' },
         userSession,
-        ...(hiroProvider ? { provider: hiroProvider } : {}),
+        ...(provider ? { provider } : {}),
         onFinish: () => {
           try {
             const profile = userSession.loadUserData()
