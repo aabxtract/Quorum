@@ -12,6 +12,22 @@ import {
 // module scope. Only construct on first use.
 let _agentVault: FlowVault | null = null
 
+function requireHexPrivateKey(): string {
+  const raw = process.env.STACKS_PRIVATE_KEY || ''
+  // A valid Stacks private key is a 64-char hex string (optionally suffixed
+  // with '01' for compressed = 66 chars). A mnemonic has spaces; reject it
+  // clearly so the error surfaces in logs rather than as a cryptic broadcast
+  // failure from @stacks/transactions.
+  if (!raw || raw.includes(' ')) {
+    throw new Error(
+      'STACKS_PRIVATE_KEY must be a 64-char hex private key, not a mnemonic. ' +
+      'Derive it from your seed phrase with: ' +
+      'npx @stacks/cli make_keychain -t (testnet) then copy "privateKey".'
+    )
+  }
+  return raw
+}
+
 export function getAgentVault(): FlowVault {
   if (!_agentVault) {
     _agentVault = new FlowVault({
@@ -20,9 +36,7 @@ export function getAgentVault(): FlowVault {
       contractName: FLOWVAULT_CONTRACT_NAME,
       tokenContractAddress: USDCX_CONTRACT_ADDRESS,
       tokenContractName: USDCX_CONTRACT_NAME,
-      senderKey:
-        process.env.STACKS_PRIVATE_KEY ||
-        '0x0000000000000000000000000000000000000000000000000000000000000000',
+      senderKey: requireHexPrivateKey(),
     })
   }
   return _agentVault

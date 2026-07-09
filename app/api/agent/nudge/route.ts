@@ -23,9 +23,9 @@ export async function POST() {
     }
 
     // Forward to the authenticated resolve endpoint server-side
-    const base = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000'
+    const base =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
     const res = await fetch(`${base}/api/agent/resolve`, {
       method: 'POST',

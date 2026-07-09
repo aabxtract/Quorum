@@ -3,20 +3,25 @@ import { createContext, useContext, useEffect, useState, useCallback, ReactNode 
 
 interface WalletContextValue {
   walletAddress: string | null
+  walletLoading: boolean
   connectWallet: () => Promise<void>
   disconnectWallet: () => void
 }
 
 const WalletContext = createContext<WalletContextValue>({
   walletAddress: null,
+  walletLoading: true,
   connectWallet: async () => {},
   disconnectWallet: () => {},
 })
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
+  const [walletLoading, setWalletLoading] = useState(true)
 
-  // Read persisted session on mount
+  // Read persisted session on mount — keep loading=true until the async
+  // import settles so components never flash "Connect Wallet" for already-
+  // connected wallets.
   useEffect(() => {
     import('@stacks/connect').then(({ AppConfig, UserSession }) => {
       try {
@@ -30,8 +35,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
       } catch {
         /* no stored session */
+      } finally {
+        setWalletLoading(false)
       }
-    })
+    }).catch(() => setWalletLoading(false))
   }, [])
 
   const connectWallet = useCallback(async () => {
@@ -69,7 +76,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <WalletContext.Provider value={{ walletAddress, connectWallet, disconnectWallet }}>
+    <WalletContext.Provider value={{ walletAddress, walletLoading, connectWallet, disconnectWallet }}>
       {children}
     </WalletContext.Provider>
   )

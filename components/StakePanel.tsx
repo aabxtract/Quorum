@@ -11,7 +11,7 @@ export default function StakePanel({ marketId, onStaked }: {
   marketId: string
   onStaked: () => void
 }) {
-  const { walletAddress, connectWallet } = useWallet()
+  const { walletAddress, walletLoading, connectWallet } = useWallet()
   const [side, setSide] = useState<'yes' | 'no'>('yes')
   const [amount, setAmount] = useState('')
   const [loading, setLoading] = useState(false)
@@ -73,7 +73,22 @@ export default function StakePanel({ marketId, onStaked }: {
     }
   }
 
-  // Wallet not connected — show connect prompt instead of hiding the panel
+  // Still checking localStorage — show skeleton to prevent flash
+  if (walletLoading) {
+    return (
+      <div className="bg-[#121214] border border-white/5 rounded-2xl p-6 space-y-4 animate-pulse">
+        <div className="h-5 w-32 bg-white/5 rounded" />
+        <div className="flex gap-2">
+          <div className="flex-1 h-12 bg-white/5 rounded-xl" />
+          <div className="flex-1 h-12 bg-white/5 rounded-xl" />
+        </div>
+        <div className="h-12 bg-white/5 rounded-xl" />
+        <div className="h-12 bg-white/5 rounded-xl" />
+      </div>
+    )
+  }
+
+  // Wallet not connected — show connect prompt
   if (!walletAddress) {
     return (
       <div className="bg-[#121214] border border-white/5 rounded-2xl p-6 text-center space-y-4">

@@ -83,7 +83,31 @@ export default function MarketDetailPage() {
               )}
             </div>
 
-            <h1 className="text-3xl font-black font-heading mb-8">{market.question}</h1>
+            <h1 className="text-3xl font-black font-heading mb-4">{market.question}</h1>
+
+            {/* Plain-English condition explanation */}
+            <div className="flex gap-3 mb-6 text-sm">
+              <div className="flex-1 bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3">
+                <span className="text-green-400 font-bold">YES wins if</span>
+                <span className="text-gray-300 ml-2">
+                  {market.symbol.replace('USDT', '')} price is{' '}
+                  <span className="font-mono font-bold">
+                    {market.direction === 'above' ? '>' : '<'} ${parseFloat(market.target_value).toFixed(4)}
+                  </span>{' '}
+                  at resolution
+                </span>
+              </div>
+              <div className="flex-1 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                <span className="text-red-400 font-bold">NO wins if</span>
+                <span className="text-gray-300 ml-2">
+                  {market.symbol.replace('USDT', '')} price is{' '}
+                  <span className="font-mono font-bold">
+                    {market.direction === 'above' ? '≤' : '≥'} ${parseFloat(market.target_value).toFixed(4)}
+                  </span>{' '}
+                  at resolution
+                </span>
+              </div>
+            </div>
 
             <PoolBar yesPool={yesPool} noPool={noPool} />
             <div className="text-center text-sm text-[#64748B] mt-2">
@@ -104,7 +128,9 @@ export default function MarketDetailPage() {
                 </div>
                 <div className="p-4 bg-[#0A0A0F] rounded-xl border border-[#1E1E2E]">
                   <p className="text-gray-500 text-xs mb-1 uppercase tracking-wider">Resolution Price</p>
-                  <p className="text-xl font-bold text-white">${market.resolution_price}</p>
+                  <p className="text-xl font-bold text-white">
+                    ${parseFloat(market.resolution_price).toFixed(4)}
+                  </p>
                 </div>
                 <div className="p-4 bg-[#0A0A0F] rounded-xl border border-[#1E1E2E]">
                   <p className="text-gray-500 text-xs mb-1 uppercase tracking-wider">Settlement</p>

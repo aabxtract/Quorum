@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
         await sendTelegramMessage(`⚡ *Open Markets*\n\n${body}`, chatId)
       }
     } else if (cmd === '/join') {
-      const url = process.env.NEXT_PUBLIC_APP_URL || 'https://quorum.vercel.app'
+      const url = process.env.NEXT_PUBLIC_APP_URL || 'https://quorum-flashmarkets.vercel.app'
       await sendTelegramMessage(
         `🔗 *Join Quorum*\n\nStake on outcomes, AI resolves them, FlowVault settles atomically.\n\n[Open Quorum](${url})`,
         chatId

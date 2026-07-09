@@ -63,7 +63,7 @@ export default function MarketCard({ market }: { market: Market }) {
           <div className={`inline-block px-3 py-1 rounded-full text-sm font-bold mb-3 ${
             market.winning_side === 'yes' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
           }`}>
-            {market.winning_side?.toUpperCase()} WINS @ ${market.resolution_price}
+            {market.winning_side?.toUpperCase()} WINS @ ${parseFloat(String(market.resolution_price)).toFixed(4)}
           </div>
           {market.agent_reasoning && (
             <p className="text-[#64748B] text-sm italic line-clamp-2">🤖 {market.agent_reasoning}</p>
