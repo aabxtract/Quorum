@@ -69,27 +69,41 @@ export function createBrowserVault(senderAddress: string) {
 
       console.log('[stake] params:', JSON.stringify(params, null, 2))
 
+      // Leather's SIP-030 session goes stale after ~15 min of inactivity or a
+      // fresh page load. If we get "Wallet no longer available" (code 16),
+      // silently call getAddresses to re-establish the session and retry ONCE.
+      const attempt = async () =>
+        provider.request('stx_callContract', params)
+
+      const parseErr = (payload: any) => ({
+        code: payload?.error?.code ?? payload?.code,
+        message: payload?.error?.message ?? payload?.message,
+        data: payload?.error?.data ?? payload?.data,
+      })
+
       try {
-        const response = await provider.request('stx_callContract', params)
+        let response = await attempt()
         console.log('[stake] stx_callContract raw response:', JSON.stringify(response, null, 2))
 
-        // Leather can return { result: {...} } on success OR { error: {...} }
-        // on failure (JSON-RPC 2.0). `.request()` doesn't always throw on
-        // error, so check explicitly.
+        // Auto-recover from stale session (Leather error code 16)
+        if (response?.error?.code === 16) {
+          console.warn('[stake] Leather session stale — re-authorizing via getAddresses')
+          try {
+            await provider.request('getAddresses')
+          } catch { /* user may cancel; the retry will throw the real error */ }
+          response = await attempt()
+          console.log('[stake] retry response:', JSON.stringify(response, null, 2))
+        }
+
         if (response?.error) {
-          const e = response.error
-          console.error('[stake] Leather returned JSON-RPC error:', {
-            code: e.code,
-            message: e.message,
-            data: e.data,
-          })
+          const e = parseErr(response)
+          console.error('[stake] Leather returned JSON-RPC error:', e)
           if (e.code === 4001) throw new Error('User cancelled')
           throw new Error(
             `Leather ${e.code}: ${e.message}${e.data ? ` — ${JSON.stringify(e.data)}` : ''}`
           )
         }
 
-        // Leather returns { result: { txid, transaction } }
         const txId =
           response?.result?.txid ??
           response?.result?.txId ??
@@ -97,23 +111,13 @@ export function createBrowserVault(senderAddress: string) {
           response?.txId
 
         if (!txId) {
-          throw new Error(
-            `Leather returned no txid: ${JSON.stringify(response)}`
-          )
+          throw new Error(`Leather returned no txid: ${JSON.stringify(response)}`)
         }
         return { txId, status: 'success' } as any
       } catch (err: any) {
-        console.error('[stake] stx_callContract threw:', {
-          message: err?.message,
-          code: err?.error?.code ?? err?.code,
-          errorMessage: err?.error?.message,
-          errorData: err?.error?.data,
-          full: err,
-        })
-        const code = err?.error?.code ?? err?.code
-        if (code === 4001) {
-          throw new Error('User cancelled')
-        }
+        const parsed = parseErr(err)
+        console.error('[stake] stx_callContract threw:', { ...parsed, full: err })
+        if (parsed.code === 4001) throw new Error('User cancelled')
         throw err instanceof Error ? err : new Error(String(err))
       }
     },

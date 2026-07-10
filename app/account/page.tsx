@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { requestLeatherStxAddress } from '@/lib/leather'
+import { useWallet } from '@/lib/wallet-context'
 
 interface User {
   id: string
@@ -30,6 +32,7 @@ interface Stake {
 
 export default function AccountPage() {
   const router = useRouter()
+  const { refreshFromAuth } = useWallet()
   const [user, setUser] = useState<User | null>(null)
   const [stakes, setStakes] = useState<Stake[]>([])
   const [loading, setLoading] = useState(true)
@@ -62,47 +65,25 @@ export default function AccountPage() {
     setLinkError('')
     setLinkingWallet(true)
     try {
-      const { AppConfig, UserSession, showConnect } = await import('@stacks/connect')
-      const appConfig = new AppConfig(['store_write', 'publish_data'])
-      const userSession = new UserSession({ appConfig })
-
-      const getAddr = () => {
-        const profile = userSession.loadUserData()
-        return profile.profile.stxAddress.testnet || profile.profile.stxAddress.mainnet
-      }
-
-      const submit = async (addr: string) => {
-        const res = await fetch('/api/auth/link-wallet', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ walletAddress: addr }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error || 'Failed to link wallet')
-        setUser(data.user)
-      }
-
-      if (userSession.isUserSignedIn()) {
-        await submit(getAddr())
+      const addr = await requestLeatherStxAddress()
+      if (!addr) {
+        setLinkError('Wallet connection cancelled')
         return
       }
 
-      await new Promise<void>((resolve, reject) => {
-        showConnect({
-          appDetails: { name: 'Quorum', icon: '/favicon.ico' },
-          userSession,
-          onFinish: async () => {
-            try {
-              await submit(getAddr())
-              resolve()
-            } catch (e) { reject(e) }
-          },
-          onCancel: () => reject(new Error('Cancelled')),
-        })
+      const res = await fetch('/api/auth/link-wallet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress: addr }),
       })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to link wallet')
+      setUser(data.user)
+      // Push the newly linked wallet into wallet-context so /markets/[id]
+      // sees it without a page reload.
+      await refreshFromAuth()
     } catch (e: any) {
-      const msg = e?.message || String(e)
-      setLinkError(msg === 'Cancelled' ? 'Wallet connection cancelled' : msg)
+      setLinkError(e?.message || String(e))
     } finally {
       setLinkingWallet(false)
     }

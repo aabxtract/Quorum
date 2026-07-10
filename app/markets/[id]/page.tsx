@@ -201,7 +201,7 @@ export default function MarketDetailPage() {
         <div className="lg:col-span-1">
           <div className="sticky top-24">
             {market.status === 'open' && !isClosed ? (
-              <StakePanel marketId={market.id} onStaked={() => mutate()} />
+              <StakePanel marketId={market.id} stakes={stakes} onStaked={() => mutate()} />
             ) : market.status === 'resolved' ? (
               <div className="bg-[#13131A] border border-[#1E1E2E] rounded-xl p-6 text-center">
                 <h3 className="text-white font-bold mb-2">Market Resolved</h3>

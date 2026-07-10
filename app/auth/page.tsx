@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { requestLeatherStxAddress } from '@/lib/leather'
+import { useWallet } from '@/lib/wallet-context'
 
 type Tab = 'signin' | 'signup'
 
@@ -66,6 +68,7 @@ export default function AuthPage() {
 /* ───────────────────────── Sign In ───────────────────────── */
 function SignInForm() {
   const router = useRouter()
+  const { refreshFromAuth } = useWallet()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -84,6 +87,7 @@ function SignInForm() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error); return }
+      await refreshFromAuth()
       router.push('/account')
     } catch {
       setError('Network error. Please try again.')
@@ -96,40 +100,27 @@ function SignInForm() {
     setError('')
     setWalletLoading(true)
     try {
-      const { AppConfig, UserSession, showConnect } = await import('@stacks/connect')
-      const appConfig = new AppConfig(['store_write', 'publish_data'])
-      const userSession = new UserSession({ appConfig })
+      const walletAddress = await requestLeatherStxAddress()
+      if (!walletAddress) {
+        setError('Wallet connection cancelled.')
+        return
+      }
 
-      showConnect({
-        appDetails: { name: 'Quorum', icon: '/favicon.ico' },
-        userSession,
-        onFinish: async () => {
-          try {
-            const profile = userSession.loadUserData()
-            const walletAddress =
-              profile.profile.stxAddress.testnet || profile.profile.stxAddress.mainnet
-
-            const res = await fetch('/api/auth/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ walletAddress }),
-            })
-            const data = await res.json()
-            if (!res.ok) {
-              setError(data.error || 'Wallet not linked to any account. Please sign up first.')
-            } else {
-              router.push('/account')
-            }
-          } catch {
-            setError('Failed to authenticate with wallet.')
-          } finally {
-            setWalletLoading(false)
-          }
-        },
-        onCancel: () => setWalletLoading(false),
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress }),
       })
-    } catch {
-      setError('Wallet connection failed.')
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Wallet not linked to any account. Please sign up first.')
+      } else {
+        await refreshFromAuth()
+        router.push('/account')
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Wallet connection failed.')
+    } finally {
       setWalletLoading(false)
     }
   }
@@ -237,29 +228,11 @@ function SignUpForm({ onSuccess }: { onSuccess: () => void }) {
     setError('')
     setWalletLoading(true)
     try {
-      const { AppConfig, UserSession, showConnect } = await import('@stacks/connect')
-      const appConfig = new AppConfig(['store_write', 'publish_data'])
-      const userSession = new UserSession({ appConfig })
-
-      showConnect({
-        appDetails: { name: 'Quorum', icon: '/favicon.ico' },
-        userSession,
-        onFinish: () => {
-          try {
-            const profile = userSession.loadUserData()
-            const addr =
-              profile.profile.stxAddress.testnet || profile.profile.stxAddress.mainnet
-            setWalletAddress(addr)
-          } catch {
-            setError('Could not read wallet data.')
-          } finally {
-            setWalletLoading(false)
-          }
-        },
-        onCancel: () => setWalletLoading(false),
-      })
-    } catch {
-      setError('Wallet connection failed.')
+      const addr = await requestLeatherStxAddress()
+      if (addr) setWalletAddress(addr)
+    } catch (err: any) {
+      setError(err?.message || 'Wallet connection failed.')
+    } finally {
       setWalletLoading(false)
     }
   }

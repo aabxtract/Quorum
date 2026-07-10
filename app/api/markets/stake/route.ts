@@ -24,11 +24,36 @@ export async function POST(req: NextRequest) {
     }
     const market = rows[0]
 
-    await getPool().query(
-      `INSERT INTO stakes (market_id, wallet_address, side, amount, tx_hash)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [marketId, walletAddress, side, amount, txHash]
+    // One stake per (market, wallet, side). Top-ups come later.
+    const dup = await getPool().query(
+      `SELECT id FROM stakes
+        WHERE market_id = $1 AND wallet_address = $2 AND side = $3
+        LIMIT 1`,
+      [marketId, walletAddress, side]
     )
+    if (dup.rows.length > 0) {
+      return NextResponse.json(
+        { error: `You've already staked ${String(side).toUpperCase()} on this market.` },
+        { status: 409 }
+      )
+    }
+
+    try {
+      await getPool().query(
+        `INSERT INTO stakes (market_id, wallet_address, side, amount, tx_hash)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [marketId, walletAddress, side, amount, txHash]
+      )
+    } catch (insertErr: any) {
+      // Postgres unique_violation — race between two concurrent stakes
+      if (insertErr?.code === '23505') {
+        return NextResponse.json(
+          { error: `You've already staked ${String(side).toUpperCase()} on this market.` },
+          { status: 409 }
+        )
+      }
+      throw insertErr
+    }
 
     const poolColumn = side === 'yes' ? 'yes_pool' : 'no_pool'
     await getPool().query(

@@ -1,11 +1,17 @@
 'use client'
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
+import { requestLeatherStxAddress } from './leather'
 
 interface WalletContextValue {
   walletAddress: string | null
   walletLoading: boolean
+  /** Opens Leather popup + saves the address locally. */
   connectWallet: () => Promise<void>
+  /** Clears local wallet state (does NOT log the user out of their account). */
   disconnectWallet: () => void
+  /** Re-fetches /api/auth/me and pulls the linked wallet address. Call after
+   *  login / signup / link-wallet so the staking UI updates without a reload. */
+  refreshFromAuth: () => Promise<void>
 }
 
 const WalletContext = createContext<WalletContextValue>({
@@ -13,66 +19,60 @@ const WalletContext = createContext<WalletContextValue>({
   walletLoading: true,
   connectWallet: async () => {},
   disconnectWallet: () => {},
+  refreshFromAuth: async () => {},
 })
 
-// LocalStorage key so the wallet stays "connected" across reloads without
-// leaning on @stacks/connect's legacy UserSession.
+// LocalStorage fallback for wallet-only sessions (no auth account yet).
 const STORAGE_KEY = 'quorum:wallet-address'
 
-function getLeatherProvider(): any {
-  if (typeof window === 'undefined') return undefined
-  const w = window as any
-  return w.LeatherProvider ?? w.HiroWalletProvider ?? w.StacksProvider
-}
-
-/**
- * Ask Leather for the user's addresses via SIP-030 `getAddresses`.
- * Response shape: { result: { addresses: [{ address, symbol, ... }, ...] } }
- * where `symbol` is 'STX' or 'BTC'.
- */
-async function requestLeatherAddresses(): Promise<string | null> {
-  const provider = getLeatherProvider()
-  if (!provider || typeof provider.request !== 'function') {
-    throw new Error(
-      'Leather/Hiro Wallet not detected. Install the Leather extension (https://leather.io) and reload the page.'
-    )
+async function fetchAuthWallet(): Promise<string | null> {
+  try {
+    const res = await fetch('/api/auth/me', { credentials: 'include' })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data?.user?.wallet_address ?? null
+  } catch {
+    return null
   }
-
-  const response = await provider.request('getAddresses')
-
-  if (response?.error) {
-    const e = response.error
-    if (e.code === 4001) return null // user cancelled
-    throw new Error(`Leather ${e.code}: ${e.message}`)
-  }
-
-  const addresses: any[] = response?.result?.addresses ?? []
-  const stx = addresses.find(
-    (a) => a.symbol === 'STX' || a.address?.startsWith('S')
-  )
-  return stx?.address ?? null
 }
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [walletLoading, setWalletLoading] = useState(true)
 
-  // Restore previously connected wallet from localStorage. No wallet popup —
-  // we just remember what the user last connected as. The real SIP-030
-  // handshake happens again on the first stx_callContract, which is fine.
+  // Priority: authed user's linked wallet > localStorage fallback.
+  // We check both in parallel so a stale localStorage never wins over the
+  // canonical value in the auth session.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) setWalletAddress(saved)
-    } catch {
-      /* localStorage disabled */
+    let cancelled = false
+    ;(async () => {
+      const [authWallet, saved] = [
+        await fetchAuthWallet(),
+        (() => {
+          try { return localStorage.getItem(STORAGE_KEY) } catch { return null }
+        })(),
+      ]
+      if (cancelled) return
+      const addr = authWallet ?? saved
+      if (addr) setWalletAddress(addr)
+      setWalletLoading(false)
+    })()
+    return () => {
+      cancelled = true
     }
-    setWalletLoading(false)
+  }, [])
+
+  const refreshFromAuth = useCallback(async () => {
+    const authWallet = await fetchAuthWallet()
+    if (authWallet) {
+      setWalletAddress(authWallet)
+      try { localStorage.setItem(STORAGE_KEY, authWallet) } catch {}
+    }
   }, [])
 
   const connectWallet = useCallback(async () => {
     try {
-      const addr = await requestLeatherAddresses()
+      const addr = await requestLeatherStxAddress()
       if (addr) {
         setWalletAddress(addr)
         try { localStorage.setItem(STORAGE_KEY, addr) } catch {}
@@ -89,7 +89,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <WalletContext.Provider value={{ walletAddress, walletLoading, connectWallet, disconnectWallet }}>
+    <WalletContext.Provider
+      value={{ walletAddress, walletLoading, connectWallet, disconnectWallet, refreshFromAuth }}
+    >
       {children}
     </WalletContext.Provider>
   )
