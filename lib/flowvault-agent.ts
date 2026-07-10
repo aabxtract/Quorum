@@ -1,5 +1,17 @@
 import { FlowVault } from 'flowvault-sdk'
 import {
+  makeContractCall,
+  broadcastTransaction,
+  AnchorMode,
+  PostConditionMode,
+  TransactionVersion,
+  getAddressFromPrivateKey,
+  uintCV,
+  standardPrincipalCV,
+  noneCV,
+} from '@stacks/transactions'
+import { StacksTestnet, StacksMainnet } from '@stacks/network'
+import {
   FLOWVAULT_CONTRACT_ADDRESS,
   FLOWVAULT_CONTRACT_NAME,
   FLOWVAULT_NETWORK,
@@ -26,6 +38,16 @@ function requireHexPrivateKey(): string {
     )
   }
   return raw
+}
+
+function requireAgentAddress(): string {
+  if (process.env.STACKS_WALLET_ADDRESS) return process.env.STACKS_WALLET_ADDRESS
+  const txVersion = FLOWVAULT_NETWORK === 'mainnet' ? TransactionVersion.Mainnet : TransactionVersion.Testnet
+  return getAddressFromPrivateKey(requireHexPrivateKey(), txVersion)
+}
+
+function getStacksNetwork() {
+  return FLOWVAULT_NETWORK === 'mainnet' ? new StacksMainnet() : new StacksTestnet()
 }
 
 export function getAgentVault(): FlowVault {
@@ -60,29 +82,44 @@ export const fromMicro = (micro: string | number): number =>
   Number(BigInt(String(micro))) / 1_000_000
 
 /**
- * Route a single winner payout from the agent vault to the winner's wallet.
- * Clears any previous routing rules, sets a one-shot split to the winner,
- * deposits the payout amount, then clears the rule. Returns the on-chain tx id.
+ * Send USDCx from the agent wallet directly to a winner via SIP-010 transfer.
+ * The agent wallet already holds the staked USDCx (routed from user deposits via
+ * FlowVault split rules). This bypasses the FlowVault vault entirely — no
+ * token allowance needed, no deposit()+split dance.
+ *
+ * Returns the on-chain tx id.
  */
 export async function payoutWinner(
   winnerAddress: string,
   payoutUsdcx: number
 ): Promise<string> {
   if (payoutUsdcx <= 0) throw new Error('payout must be positive')
-  const vault = getAgentVault()
 
-  await vault.clearRoutingRules()
-  await vault.setRoutingRules({
-    splitAddress: winnerAddress,
-    splitAmount: toMicro(payoutUsdcx),
-    lockAmount: '0',
-    lockUntilBlock: 0,
+  const microAmount = BigInt(Math.floor(payoutUsdcx * 1_000_000))
+  const senderKey = requireHexPrivateKey()
+  const agentAddress = requireAgentAddress()
+  const network = getStacksNetwork()
+
+  const tx = await makeContractCall({
+    contractAddress: USDCX_CONTRACT_ADDRESS,
+    contractName: USDCX_CONTRACT_NAME,
+    functionName: 'transfer',
+    functionArgs: [
+      uintCV(microAmount),
+      standardPrincipalCV(agentAddress),
+      standardPrincipalCV(winnerAddress),
+      noneCV(),
+    ],
+    senderKey,
+    network,
+    anchorMode: AnchorMode.Any,
+    postConditionMode: PostConditionMode.Allow,
   })
 
-  const tx = await vault.deposit(toMicro(payoutUsdcx))
+  const result = await broadcastTransaction(tx, network)
+  if ('error' in result && result.error) {
+    throw new Error(`USDCx transfer failed: ${result.error} — ${result.reason || ''}`)
+  }
 
-  // Clear rules after deposit so the next winner starts clean
-  await vault.clearRoutingRules().catch(() => {})
-
-  return tx.txId
+  return result.txid as string
 }
