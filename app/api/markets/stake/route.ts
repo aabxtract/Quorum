@@ -3,6 +3,9 @@ import { getPool } from '@/lib/db'
 import { sendTelegramMessage } from '@/lib/telegram'
 import { recordStakeOnChain } from '@/lib/quorum-agent'
 
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 export async function POST(req: NextRequest) {
   try {
     const { marketId, walletAddress, side, amount, txHash } = await req.json()

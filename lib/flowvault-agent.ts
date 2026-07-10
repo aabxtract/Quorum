@@ -80,5 +80,9 @@ export async function payoutWinner(
   })
 
   const tx = await vault.deposit(toMicro(payoutUsdcx))
+
+  // Clear rules after deposit so the next winner starts clean
+  await vault.clearRoutingRules().catch(() => {})
+
   return tx.txId
 }

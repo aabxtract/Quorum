@@ -106,7 +106,8 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Final cleanup of any remaining routing rules
+        // Final cleanup — payoutWinner already clears after each payout,
+        // but clear once more in case the loop exited early on error.
         try { await getAgentVault().clearRoutingRules() } catch {}
       } else if (totalPool > 0 && winnerPool === 0) {
         // Everyone on losing side — nothing to pay out, fee stays in vault

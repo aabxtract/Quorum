@@ -6,8 +6,31 @@ import {
   USDCX_CONTRACT_NAME,
 } from './flowvault-config'
 import { FlowVault } from 'flowvault-sdk'
+// The FlowVault SDK bundles its own @stacks/transactions v7 and builds v7-style
+// Clarity Values (`{ type: 'uint', value: 1n }`). Our top-level v6 has a
+// different CV shape (`{ type: ClarityType.UInt, ... }`), so v6's `cvToHex`
+// silently produces garbage that Leather rejects with
+// "Unable to serialize. Invalid Clarity Value". Import the SDK's bundled v7
+// serialiser directly.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { serializeCV } = require('flowvault-sdk/node_modules/@stacks/transactions') as {
+  serializeCV: (cv: any) => string
+}
 
-const AGENT_WALLET = process.env.NEXT_PUBLIC_AGENT_WALLET_ADDRESS || 'ST2K5BNBN6BSF3S4EQ0EFRMM4MD4JTGKF0PY90E70'
+const AGENT_WALLET =
+  process.env.NEXT_PUBLIC_AGENT_WALLET_ADDRESS ||
+  'ST2K5BNBN6BSF3S4EQ0EFRMM4MD4JTGKF0PY90E70'
+
+// Pick the Leather / Hiro provider. Leather is the current name (formerly
+// Hiro Wallet); the extension exposes `window.LeatherProvider` and, for
+// legacy compat, `window.StacksProvider`. Newer Leather versions ignore the
+// legacy `transactionRequest` JWT flow that @stacks/connect v7 uses under the
+// hood, so we call Leather's SIP-030 `request` API directly.
+function getLeatherProvider(): any {
+  if (typeof window === 'undefined') return undefined
+  const w = window as any
+  return w.LeatherProvider ?? w.HiroWalletProvider ?? w.StacksProvider
+}
 
 export function createBrowserVault(senderAddress: string) {
   return new FlowVault({
@@ -18,28 +41,81 @@ export function createBrowserVault(senderAddress: string) {
     tokenContractName: USDCX_CONTRACT_NAME,
     senderAddress,
     contractCallExecutor: async (call: any) => {
-      console.log('[stake] contractCallExecutor called', call.functionName)
-      const { showContractCall } = await import('@stacks/connect')
-      return new Promise((resolve, reject) => {
-        console.log('[stake] calling showContractCall (wallet picker)')
-        showContractCall({
-          contractAddress: call.contractAddress,
-          contractName: call.contractName,
-          functionName: call.functionName,
-          functionArgs: call.functionArgs,
-          network: call.network,
-          postConditionMode: 'allow' as any,
-          postConditions: call.postConditions,
-          onFinish: (data: any) => {
-            console.log('[stake] onFinish', data)
-            resolve({ txId: data.txId, status: 'success' } as any)
-          },
-          onCancel: () => {
-            console.log('[stake] onCancel')
-            reject(new Error('User cancelled'))
-          },
-        } as any)
-      })
+      const provider = getLeatherProvider()
+      if (!provider || typeof provider.request !== 'function') {
+        throw new Error(
+          'Leather/Hiro Wallet not detected. Install the Leather extension (https://leather.io) and reload the page.'
+        )
+      }
+
+      console.log('[stake] LeatherProvider.request → stx_callContract', call.functionName)
+
+      // SIP-030 payload for Leather. functionArgs must be hex-encoded
+      // Clarity values (with 0x prefix), not the CV objects the SDK builds.
+      const params = {
+        contract: `${call.contractAddress}.${call.contractName}`,
+        functionName: call.functionName,
+        functionArgs: (call.functionArgs || []).map((cv: any) => {
+          const hex = serializeCV(cv)
+          return hex.startsWith('0x') ? hex : `0x${hex}`
+        }),
+        network:
+          typeof call.network === 'string'
+            ? call.network
+            : FLOWVAULT_NETWORK,
+        postConditions: call.postConditions ?? [],
+        postConditionMode: 'allow',
+      }
+
+      console.log('[stake] params:', JSON.stringify(params, null, 2))
+
+      try {
+        const response = await provider.request('stx_callContract', params)
+        console.log('[stake] stx_callContract raw response:', JSON.stringify(response, null, 2))
+
+        // Leather can return { result: {...} } on success OR { error: {...} }
+        // on failure (JSON-RPC 2.0). `.request()` doesn't always throw on
+        // error, so check explicitly.
+        if (response?.error) {
+          const e = response.error
+          console.error('[stake] Leather returned JSON-RPC error:', {
+            code: e.code,
+            message: e.message,
+            data: e.data,
+          })
+          if (e.code === 4001) throw new Error('User cancelled')
+          throw new Error(
+            `Leather ${e.code}: ${e.message}${e.data ? ` — ${JSON.stringify(e.data)}` : ''}`
+          )
+        }
+
+        // Leather returns { result: { txid, transaction } }
+        const txId =
+          response?.result?.txid ??
+          response?.result?.txId ??
+          response?.txid ??
+          response?.txId
+
+        if (!txId) {
+          throw new Error(
+            `Leather returned no txid: ${JSON.stringify(response)}`
+          )
+        }
+        return { txId, status: 'success' } as any
+      } catch (err: any) {
+        console.error('[stake] stx_callContract threw:', {
+          message: err?.message,
+          code: err?.error?.code ?? err?.code,
+          errorMessage: err?.error?.message,
+          errorData: err?.error?.data,
+          full: err,
+        })
+        const code = err?.error?.code ?? err?.code
+        if (code === 4001) {
+          throw new Error('User cancelled')
+        }
+        throw err instanceof Error ? err : new Error(String(err))
+      }
     },
   })
 }
@@ -57,9 +133,11 @@ export async function stakeOnMarket(
   userAddress: string,
   stakeMicro: string
 ): Promise<{ depositTxId: string }> {
+  console.log('[stake] stakeOnMarket start', { userAddress, stakeMicro, AGENT_WALLET })
   const vault = createBrowserVault(userAddress)
 
   // 1. Set routing rule — split to agent wallet
+  console.log('[stake] step 1: setRoutingRules')
   const rulesResult = await vault.setRoutingRules({
     splitAddress: AGENT_WALLET,
     splitAmount: stakeMicro,
@@ -71,12 +149,14 @@ export async function stakeOnMarket(
   }
 
   // 2. Deposit — routing fires, agent receives the stake
+  console.log('[stake] step 2: deposit')
   const depositResult = await vault.deposit(stakeMicro)
   if (depositResult.status !== 'success') {
     throw new Error(`deposit failed: ${JSON.stringify(depositResult)}`)
   }
 
   // 3. Clear routing rules
+  console.log('[stake] step 3: clearRoutingRules')
   await vault.clearRoutingRules().catch(() => {})
 
   return { depositTxId: depositResult.txId }

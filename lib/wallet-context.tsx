@@ -15,66 +15,77 @@ const WalletContext = createContext<WalletContextValue>({
   disconnectWallet: () => {},
 })
 
+// LocalStorage key so the wallet stays "connected" across reloads without
+// leaning on @stacks/connect's legacy UserSession.
+const STORAGE_KEY = 'quorum:wallet-address'
+
+function getLeatherProvider(): any {
+  if (typeof window === 'undefined') return undefined
+  const w = window as any
+  return w.LeatherProvider ?? w.HiroWalletProvider ?? w.StacksProvider
+}
+
+/**
+ * Ask Leather for the user's addresses via SIP-030 `getAddresses`.
+ * Response shape: { result: { addresses: [{ address, symbol, ... }, ...] } }
+ * where `symbol` is 'STX' or 'BTC'.
+ */
+async function requestLeatherAddresses(): Promise<string | null> {
+  const provider = getLeatherProvider()
+  if (!provider || typeof provider.request !== 'function') {
+    throw new Error(
+      'Leather/Hiro Wallet not detected. Install the Leather extension (https://leather.io) and reload the page.'
+    )
+  }
+
+  const response = await provider.request('getAddresses')
+
+  if (response?.error) {
+    const e = response.error
+    if (e.code === 4001) return null // user cancelled
+    throw new Error(`Leather ${e.code}: ${e.message}`)
+  }
+
+  const addresses: any[] = response?.result?.addresses ?? []
+  const stx = addresses.find(
+    (a) => a.symbol === 'STX' || a.address?.startsWith('S')
+  )
+  return stx?.address ?? null
+}
+
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [walletLoading, setWalletLoading] = useState(true)
 
-  // Read persisted session on mount — keep loading=true until the async
-  // import settles so components never flash "Connect Wallet" for already-
-  // connected wallets.
+  // Restore previously connected wallet from localStorage. No wallet popup —
+  // we just remember what the user last connected as. The real SIP-030
+  // handshake happens again on the first stx_callContract, which is fine.
   useEffect(() => {
-    import('@stacks/connect').then(({ AppConfig, UserSession }) => {
-      try {
-        const appConfig = new AppConfig(['store_write', 'publish_data'])
-        const userSession = new UserSession({ appConfig })
-        if (userSession.isUserSignedIn()) {
-          const profile = userSession.loadUserData()
-          const addr =
-            profile.profile.stxAddress.testnet || profile.profile.stxAddress.mainnet
-          setWalletAddress(addr)
-        }
-      } catch {
-        /* no stored session */
-      } finally {
-        setWalletLoading(false)
-      }
-    }).catch(() => setWalletLoading(false))
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) setWalletAddress(saved)
+    } catch {
+      /* localStorage disabled */
+    }
+    setWalletLoading(false)
   }, [])
 
   const connectWallet = useCallback(async () => {
-    const { AppConfig, UserSession, showConnect } = await import('@stacks/connect')
-    const appConfig = new AppConfig(['store_write', 'publish_data'])
-    const userSession = new UserSession({ appConfig })
-    const provider = (window as any).LeatherProvider ?? (window as any).StacksProvider
-
-    return new Promise<void>((resolve) => {
-      showConnect({
-        appDetails: { name: 'Quorum', icon: '/favicon.ico' },
-        userSession,
-        ...(provider ? { provider } : {}),
-        onFinish: () => {
-          try {
-            const profile = userSession.loadUserData()
-            const addr =
-              profile.profile.stxAddress.testnet || profile.profile.stxAddress.mainnet
-            setWalletAddress(addr)
-          } catch {
-            window.location.reload()
-          }
-          resolve()
-        },
-        onCancel: () => resolve(),
-      })
-    })
+    try {
+      const addr = await requestLeatherAddresses()
+      if (addr) {
+        setWalletAddress(addr)
+        try { localStorage.setItem(STORAGE_KEY, addr) } catch {}
+      }
+    } catch (err: any) {
+      console.error('[wallet] connect failed:', err?.message || err)
+      alert(err?.message || 'Failed to connect wallet')
+    }
   }, [])
 
   const disconnectWallet = useCallback(() => {
-    import('@stacks/connect').then(({ AppConfig, UserSession }) => {
-      const appConfig = new AppConfig(['store_write', 'publish_data'])
-      const userSession = new UserSession({ appConfig })
-      userSession.signUserOut('/')
-    })
     setWalletAddress(null)
+    try { localStorage.removeItem(STORAGE_KEY) } catch {}
   }, [])
 
   return (

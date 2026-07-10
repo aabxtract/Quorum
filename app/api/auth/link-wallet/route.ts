@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPool } from '@/lib/db'
 import { verifyJwt, signJwt } from '@/lib/auth'
 
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 export async function POST(req: NextRequest) {
   try {
     const cookieToken = req.cookies.get('auth_token')?.value
