@@ -18,13 +18,11 @@ export function createBrowserVault(senderAddress: string) {
     tokenContractName: USDCX_CONTRACT_NAME,
     senderAddress,
     contractCallExecutor: async (call: any) => {
-      const { openContractCall, getStacksProvider } = await import('@stacks/connect')
-      const provider = (window as any).LeatherProvider ?? getStacksProvider()
-      if (!provider) {
-        throw new Error('No Stacks wallet found. Please install Leather Wallet.')
-      }
+      console.log('[stake] contractCallExecutor called', call.functionName)
+      const { showContractCall } = await import('@stacks/connect')
       return new Promise((resolve, reject) => {
-        openContractCall({
+        console.log('[stake] calling showContractCall (wallet picker)')
+        showContractCall({
           contractAddress: call.contractAddress,
           contractName: call.contractName,
           functionName: call.functionName,
@@ -32,9 +30,15 @@ export function createBrowserVault(senderAddress: string) {
           network: call.network,
           postConditionMode: 'allow' as any,
           postConditions: call.postConditions,
-          onFinish: (data: any) => resolve({ txId: data.txId, status: 'success' } as any),
-          onCancel: () => reject(new Error('User cancelled')),
-        } as any, provider)
+          onFinish: (data: any) => {
+            console.log('[stake] onFinish', data)
+            resolve({ txId: data.txId, status: 'success' } as any)
+          },
+          onCancel: () => {
+            console.log('[stake] onCancel')
+            reject(new Error('User cancelled'))
+          },
+        } as any)
       })
     },
   })

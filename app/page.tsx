@@ -73,12 +73,22 @@ export default function Home() {
             Call it right and FlowVault sends your winnings straight to your wallet — no middlemen, no delays, no trust required. The AI checks the result. The blockchain handles the rest.
           </p>
 
-          <Link
-            href="/auth"
-            className="relative z-10 px-8 py-3.5 bg-white hover:bg-gray-100 text-[#0A0A0B] font-bold rounded-full transition-all text-sm"
-          >
-            Start Trading Now
-          </Link>
+          <div className="relative z-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              href="/auth"
+              className="px-8 py-3.5 bg-white hover:bg-gray-100 text-[#0A0A0B] font-bold rounded-full transition-all text-sm"
+            >
+              Start Trading Now
+            </Link>
+            <a
+              href="https://t.me/quorumalerts"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-8 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold rounded-full transition-all text-sm"
+            >
+              Get Market Alerts
+            </a>
+          </div>
           <div className="relative z-10 mt-12 w-full">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
               {/* Left Card: Flash Markets */}
