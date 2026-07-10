@@ -264,21 +264,7 @@ USDCx:      ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.usdcx
 
 No custom contracts deployed. Quorum is built entirely on top of the existing FlowVault v2 contract.
 
----
-
-## Testnet Transactions
-
-| Action | Tx Hash | Explorer |
-|--------|---------|---------|
-| YES stake — demo market | [hash] | [link] |
-| NO stake — demo market | [hash] | [link] |
-| clearRoutingRules | [hash] | [link] |
-| setRoutingRules | [hash] | [link] |
-| FlowVault settlement deposit | [hash] | [link] |
-| clearRoutingRules (reset) | [hash] | [link] |
-| Winner payout transfer | [hash] | [link] |
-
----
+--
 
 ## Resolution Sources
 
@@ -308,27 +294,11 @@ The `/api/agent/resolve` endpoint requires `Authorization: Bearer {CRON_SECRET}`
 
 ---
 
-## Known Limitations
-
-**Single-sided markets**
-If all stakers pick the same side and that side wins, there is no loser pool to fund profit. Winners receive only their principal back. UI warns users when one side has zero stakes before they commit.
-
-**Vercel Cron minimum interval**
-Vercel free tier cron minimum is 1 minute. Flash markets cannot resolve in under 60 seconds. Minimum Flash Market duration is set to 5 minutes.
-
-**Single split recipient**
-FlowVault supports one `splitAddress` per routing rule. Multi-winner distribution happens via sequential USDCx transfers after the FlowVault settlement, not within FlowVault itself.
-
-**Agent wallet as centralization point**
-Settlement signing depends on one private key on Vercel. A compromised key could manipulate routing rules. Mitigation: atomic cycles minimize the window of vulnerability. Long-term fix: threshold signature scheme.
-
----
-
 ## Live Demo
 
-**App:** [https://quorum.vercel.app]
+**App:** [https://quorum-flashmarkets.vercel.app]
 **Telegram:** [t.me/QuorumAlerts]
-**Demo Video:** [link]
+**Demo Video:** []
 
 ---
 
@@ -343,32 +313,6 @@ cp .env.example .env.local
 npm run dev
 ```
 
-```bash
-# Seed demo market
-npm run db:seed
-```
-
----
-
-## Environment Variables
-
-```bash
-NEXT_PUBLIC_STACKS_NETWORK=testnet
-NEXT_PUBLIC_FLOWVAULT_CONTRACT=STD7QG84VQQ0C35SZM2EYTHZV4M8FQ0R7YNSQWPD.flowvault-v2
-NEXT_PUBLIC_USDCX_CONTRACT=ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.usdcx
-GROQ_API_KEY=
-GROQ_MODEL=llama-3.3-70b-versatile
-STACKS_PRIVATE_KEY=
-STACKS_WALLET_ADDRESS=
-TREASURY_WALLET=
-DATABASE_URL=
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
-CRON_SECRET=
-BINANCE_API=https://api.binance.com/api/v3
-```
-
----
 
 *Quorum — Stake your conviction. The agent resolves it. FlowVault pays.*
 
